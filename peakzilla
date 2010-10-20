@@ -56,12 +56,12 @@ def main():
 	help = "fold enrichment threshold over average read density for finding candidate peaks: default=40")
 	
 	parser.add_option("-f", "--fdr",\
-	type="float", dest="fdr", default='5',\
-	help="cutoff for the estimated FDR value: default = 5")
+	type = "float", dest="fdr", default='1',\
+	help = "cutoff for the estimated FDR value: default = 1")
 	
 	parser.add_option("-q", "--quiet",\
-	action="store_false", dest="verbose", default=True,\
-	help="don't print status messages")
+	action = "store_false", dest="verbose", default=True,\
+	help = "don't print status messages")
 	
 	# read arguments and options
 	(options, args) = parser.parse_args()
