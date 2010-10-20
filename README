@@ -1,0 +1,18 @@
+Usage: peakzilla [OPTIONS] IP_ALIGNMENT CONTROL_ALIGNMENT > RESULTS
+
+Options:
+  -h, --help            show this help message and exit
+  -s FRAGMENT_SIZE, --fragment_size=FRAGMENT_SIZE
+                        fragment size in bp used to define the upper limit of
+                        peak size for modeling: default=200
+  -m MODEL_THRESHOLD, --model_threshold=MODEL_THRESHOLD
+                        fold enrichment threshold over average read density
+                        for building the peak model: default=120
+  -t PEAK_THRESHOLD, --peak_threshold=PEAK_THRESHOLD
+                        fold enrichment threshold over average read density
+                        for finding candidate peaks: default=40
+  -f FDR, --fdr=FDR     cutoff for the estimated FDR value: default = 5
+  -q, --quiet           don't print status messages
+
+Peakzilla accepts bed formated alignments as input and prints results in a bed like format to stdout.
+Status messages are printed to stderror. Requires require Python 2.6 or greater and NumPy.
