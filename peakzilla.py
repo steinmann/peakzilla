@@ -18,12 +18,6 @@
 # MA 02110-1301, USA.
 
 try:
-	from multiprocessing import Pool, cpu_count
-except ImportError:
-	sys.stderr.write("Peakzilla requires Python 2.6 or later!\n")
-	sys.exit(1)
-
-try:
 	from numpy import median, convolve, ones
 except ImportError:
 	sys.stderr.write("Failed to import from numpy, please install numpy!\n")
@@ -72,11 +66,10 @@ def main():
 	ip = args[0]
 	control = args[1]
 	
-	# load tags in paralell
+	# load tags
 	print_status('Loading tags ...', options.verbose)
-	pool = Pool(cpu_count())
-	(ip_tags, control_tags) = pool.map(TagContainer(), (ip, control))
-	pool.close()
+	ip_tags = TagContainer(ip)
+	control_tags = TagContainer(control)
 	
 	# first attempt of modeling peak size
 	print_status('Modeling peak size and shift ...', options.verbose)
@@ -532,7 +525,7 @@ class PeakContainer:
 					sys.stdout.write('%s\t%d\t%d\t%s\t%.2f\t%.2f\t%.2f\t%.2f\n' % output)
 
 def print_status(string, boolean):
-	# switchable printing to stdout
+	# switchable printing to stderror
 	if boolean:
 		sys.stderr.write('%s %s\n' % (strftime("%H:%M:%S", localtime()), string))
 	
