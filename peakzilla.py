@@ -68,9 +68,11 @@ def main():
 	
 	# load tags
 	print_status('Loading tags ...', options.verbose)
-	ip_tags = TagContainer(ip)
-	control_tags = TagContainer(control)
-	
+	ip_tags = TagContainer()
+	control_tags = TagContainer()
+	ip_tags(ip)
+	control_tags(control)
+
 	# first attempt of modeling peak size
 	print_status('Modeling peak size and shift ...', options.verbose)
 	peak_model = PeakModel(ip_tags, options.fragment_size, options.model_threshold)
