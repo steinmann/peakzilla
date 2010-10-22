@@ -510,6 +510,7 @@ class PeakContainer:
 
 	def write_to_stdout(self, fdr_cutoff):
 		# write results to stdout
+		sys.stdout.write('Chromosome\tStart\tEnd\tName\tScore\tFoldEnrichment\tDistributionScore\tFDR\n')
 		peak_count = 0
 		for chrom in sorted(self.peaks.keys()):
 			for peak in self.peaks[chrom]:
