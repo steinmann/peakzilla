@@ -38,8 +38,8 @@ def main():
 	parser = OptionParser(usage=usage)
 	
 	parser.add_option("-s", "--fragment_size",\
-	type = "int", dest="fragment_size", default="200",\
-	help = "fragment size in bp used to define the upper limit of peak size for modeling: default=200")
+	type = "int", dest="fragment_size", default="1000",\
+	help = "fragment size in bp used to define the upper limit of peak size for modeling: default=1000")
 	
 	parser.add_option("-m", "--model_threshold",\
 	type = "float", dest="model_threshold", default="120",\
