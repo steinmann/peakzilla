@@ -11,8 +11,20 @@ Options:
   -t PEAK_THRESHOLD, --peak_threshold=PEAK_THRESHOLD
                         fold enrichment threshold over average read density
                         for finding candidate peaks: default=40
-  -f FDR, --fdr=FDR     cutoff for the estimated FDR value: default = 5
+  -f FDR, --fdr=FDR     cutoff for the estimated FDR value: default = 1
   -q, --quiet           don't print status messages
 
-Peakzilla accepts bed formated alignments as input and prints results in a bed like format to stdout.
-Status messages are printed to stderror. Requires require Python 2.6 or greater and NumPy.
+
+DEPENDENCIES
+------------
+Requires require Python 2.5 or greater and NumPy.
+
+
+INPUT FORMAT
+------------
+Peakzilla accepts bed formated alignments as input.
+
+
+OUTPUT FORMAT
+-------------
+Results are printed as a table of tab separated values to stdout. Status messages are printed to stderr. 
