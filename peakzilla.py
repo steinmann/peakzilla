@@ -153,16 +153,20 @@ class TagContainer:
 	def load_bed(self, bed_file):
 		# parse a bed file and add contents to self
 		for i in csv.reader(open(bed_file), delimiter='\t'):
-			chrom = i[0]
-			start = int(i[1])
-			end = int(i[2])
-			strand = i[5]
-			# determine five prime end
-			if strand == '+':
-				fiveprime = start
-			else:
-				fiveprime = end
-			# add tag to container
+			try:
+				chrom = i[0]
+				start = int(i[1])
+				end = int(i[2])
+				strand = i[5]
+				# determine five prime end
+				if strand == '+':
+					fiveprime = start
+				else:
+					fiveprime = end
+				# add tag to container
+			except:
+				sys.stderr.write("Please make sure your input is in BED format!\n")
+				sys.exit(1)
 			self.add_tag(chrom, strand, fiveprime)
 			
 	def sort_tags(self):
