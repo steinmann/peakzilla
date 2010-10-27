@@ -282,6 +282,7 @@ class Peak:
 		self.fold_enrichment = 0
 		self.distribution_score = 0
 		self.fdr = None
+		self.survivals = 0
 
 	def __len__(self):
 		# for truth testing and number of tags
@@ -387,21 +388,18 @@ class PeakContainer:
 					peak_candidate.tag_count = score
 					peak_candidate.position = position
 					peak_candidate.tags = list(plus_window) + list(minus_window)
-					candidate_survivals = 0
+					peak_candidate.survivals = 0
 				# candidate survives if current score is smaller
 				else:
-					candidate_survivals += 1
+					peak_candidate.survivals += 1
 				# if candidate survives long enough do the expensive lookup
-				if candidate_survivals == self.peak_shift:
+				if peak_candidate.survivals == self.peak_shift:
 					# check score buffer to see whether candidate is a maximum
 					# candidate is in the middle of the buffer now
 					if peak_candidate.tag_count == max(score_buffer):
 						self.add_peak(peak_candidate, chrom)
 					# consider current score next, reset survivals
-					peak_candidate.tag_count = score
-					peak_candidate.position = position
-					peak_candidate.tags = list(plus_window) + list(minus_window)
-					candidate_survivals = 0
+					peak_candidate = Peak()
 				# while in enriched region move windows in 1 bp steps
 				position += 1
 			else:
@@ -410,7 +408,6 @@ class PeakContainer:
 					if peak_candidate.tag_count == max(score_buffer):
 						self.add_peak(peak_candidate, chrom)
 					peak_candidate = Peak()
-					candidate_survivals = 0
 					score_buffer = deque([])
 				# determine the next informative position in the genome and move there
 				if plus_tags and minus_tags:
