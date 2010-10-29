@@ -496,22 +496,22 @@ class PeakContainer:
 
 	def write_to_stdout(self, fdr_cutoff):
 		# write results to stdout
-		sys.stdout.write('Chromosome\tStart\tEnd\tName\tScore\tFoldEnrichment\tDistributionScore\tFDR\n')
+		sys.stdout.write('Chromosome\tStart\tEnd\tName\tScore\tSummit\tFoldEnrichment\tDistributionScore\tFDR\n')
 		peak_count = 0
 		for chrom in sorted(self.peaks.keys()):
 			for peak in self.peaks[chrom]:
 				if peak.fdr < fdr_cutoff:
 					peak_count += 1
-					center = peak.position
-					start = center - self.peak_shift
-					end = center + self.peak_shift
+					summit = peak.position
+					start = summit - self.peak_shift
+					end = summit + self.peak_shift
 					name = chrom + '_Peak_' + str(peak_count)
 					score = peak.get_score()
 					enrichment = peak.fold_enrichment
 					dist_score = peak.distribution_score
 					fdr = peak.fdr
-					output = (chrom, start, end, name, score, enrichment, dist_score, fdr)
-					sys.stdout.write('%s\t%d\t%d\t%s\t%.2f\t%.2f\t%.2f\t%.2f\n' % output)
+					output = (chrom, start, end, name, score, summit, enrichment, dist_score, fdr)
+					sys.stdout.write('%s\t%d\t%d\t%s\t%.2f\t%d\t%.2f\t%.2f\t%.2f\n' % output)
 
 def print_status(string, boolean):
 	# switchable printing to stderror
