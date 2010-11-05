@@ -54,7 +54,7 @@ python peakzilla.py chip.bed input.bed > chip_results.tsv
 OPTIONS
 -------
 Usage of the options should not be required! Reasonable values for
-MODEL_THRESHOLD and PEAK_THRESHOLD variable are found by the programm.
+MODEL_THRESHOLD and PEAK_THRESHOLD variable are found by the program.
 Setting them to a value previously found by a run on a similar dataset
 improves performance.
 
