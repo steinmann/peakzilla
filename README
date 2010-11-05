@@ -1,4 +1,4 @@
-Usage: peakzilla [OPTIONS] IP_ALIGNMENT CONTROL_ALIGNMENT > RESULTS
+Usage: python peakzilla.py [OPTIONS] IP_ALIGNMENT CONTROL_ALIGNMENT > RESULTS
 
 Options:
   -h, --help            show this help message and exit
@@ -17,14 +17,44 @@ Options:
 
 DEPENDENCIES
 ------------
-Requires require Python 2.5 or greater and NumPy.
+* Runs on all Unix-like operating systems.
+* Requires Python 2.5 or greater and NumPy.
 
 
 INPUT FORMAT
 ------------
-Peakzilla accepts bed formated alignments as input.
+Peakzilla accepts BED formated alignments as input.
 
+For converstion to BED format and working with BED files and alignments in
+general I highly reccommend:
+
+* bowtie (http://bowtie-bio.sourceforge.net/)
+* SAMtools (http://samtools.sourceforge.net/)
+* bedtools (http://code.google.com/p/bedtools/)
+
+
+WORKFLOW EXAMPLE
+----------------
+bowtie -p4 -m1 --sam genome_index input.fastq input.sam
+bowtie -p4 -m1 --sam genome_index chip.fastq chip.sam
+
+samtools view -bS input.sam > input.bam
+samtools view -bS chip.sam > chip.bam
+
+bamToBed -i input.bam > input.bed
+bamToBed -i chip.bam > chip.bed
+
+python peakzilla.py chip.bed input.bed > chip_results.tsv
+
+OPTIONS
+-------
+Usage of the options should not be required! Reasonable values for
+MODEL_THRESHOLD and PEAK_THRESHOLD variable are found by the programm.
+Setting them to a value previously found by a run on a similar dataset
+improves performance.
 
 OUTPUT FORMAT
 -------------
-Results are printed as a table of tab separated values to stdout. Status messages are printed to stderr. 
+* Results are printed as a table of tab separated values to stdout.
+* Status messages are printed to stderr. 
+
