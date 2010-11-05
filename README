@@ -17,7 +17,7 @@ Options:
 
 DEPENDENCIES
 ------------
-* Runs on all Unix-like operating systems.
+* Runs on OSX and Linux based operating systems.
 * Requires Python 2.5 or greater and NumPy.
 
 
@@ -43,7 +43,7 @@ bowtie -p4 -m1 --sam genome_index chip.fastq chip.sam
 samtools view -bS input.sam > input.bam
 samtools view -bS chip.sam > chip.bam
 
-# conmvert to BED format
+# convert to BED format
 bamToBed -i input.bam > input.bed
 bamToBed -i chip.bam > chip.bed
 
