@@ -58,6 +58,7 @@ MODEL_THRESHOLD and PEAK_THRESHOLD variable are found by the programm.
 Setting them to a value previously found by a run on a similar dataset
 improves performance.
 
+
 OUTPUT FORMAT
 -------------
 * Results are printed as a table of tab separated values to stdout.
