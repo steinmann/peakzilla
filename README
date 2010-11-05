@@ -35,16 +35,21 @@ general I highly reccommend:
 
 WORKFLOW EXAMPLE
 ----------------
+# use bowtie to map uniquely mappable reads to the genome
 bowtie -p4 -m1 --sam genome_index input.fastq input.sam
 bowtie -p4 -m1 --sam genome_index chip.fastq chip.sam
 
+# convert to BAM format
 samtools view -bS input.sam > input.bam
 samtools view -bS chip.sam > chip.bam
 
+# conmvert to BED format
 bamToBed -i input.bam > input.bed
 bamToBed -i chip.bam > chip.bed
 
+# run peakzilla
 python peakzilla.py chip.bed input.bed > chip_results.tsv
+
 
 OPTIONS
 -------
