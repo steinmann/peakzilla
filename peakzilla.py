@@ -84,8 +84,8 @@ def main():
 	control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, options.peak_threshold)
 	
 	# change peak threshold until it yields a reasonable number of peaks
-	while control_peaks.peak_count < 1000 or control_peaks.peak_count > 10000:
-		if control_peaks.peak_count < 1000:
+	while control_peaks.peak_count < 2000 or control_peaks.peak_count > 10000:
+		if control_peaks.peak_count < 2000:
 			options.peak_threshold = options.peak_threshold / 2
 			print_status('Peak threshold was set too high, trying: %.2f'  % options.peak_threshold, options.verbose)
 			control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, options.peak_threshold)
@@ -487,7 +487,7 @@ class PeakContainer:
 			while control_scores and control_scores[0] >= ip_score:
 				control_scores.popleft()
 				control_count +=1
-			ip_fdr = control_count / (ip_count + control_count) * 100
+			ip_fdr = control_count / ip_count * 100
 			score2fdr[str(ip_score)] = ip_fdr
 		# add fdr to each peak object
 		for chrom in self.peaks.keys():
