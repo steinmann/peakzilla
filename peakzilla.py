@@ -23,7 +23,7 @@ from math import fabs
 
 def main():
 	# option parser
-	usage = 'peakzilla [OPTIONS] chip.bed control.bed > results.tsv'
+	usage = 'python peakzilla.py [OPTIONS] chip.bed control.bed > results.tsv'
 	parser = OptionParser(usage=usage)
 	
 	parser.add_option("-s", "--fragment_size",\

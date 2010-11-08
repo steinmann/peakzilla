@@ -1,4 +1,4 @@
-Usage: python peakzilla.py [OPTIONS] IP_ALIGNMENT CONTROL_ALIGNMENT > RESULTS
+Usage:	python peakzilla.py [OPTIONS] chip.bed control.bed > results.tsv
 
 Options:
   -h, --help            show this help message and exit
