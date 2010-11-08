@@ -220,8 +220,8 @@ class PeakModel:
 		# calculate the meidan peak_shift
 		if self.peak_shifts:
 			self.peak_shift = int(median(self.peak_shifts))
-			# peak size is 2 * shift size
-			self.peak_size = self.peak_shift * 2
+			# peak size is 2 * shift size + 1
+			self.peak_size = self.peak_shift * 2 + 1
 
 	def find_simple_peaks(self, chrom, strand):
 		# return maxima of tag counts in regions with more tags than threshold
@@ -327,7 +327,7 @@ class PeakContainer:
 		self.ip_tags = ip_tags
 		self.control_tags = control_tags
 		self.peak_size = peak_size
-		self.peak_shift = peak_size / 2
+		self.peak_shift = (peak_size - 1) / 2
 		self.tag_threshold = ip_tags.tag_number / float(ip_tags.genome_size()) * peak_size * fold_threshold
 		self.avg_tag_density = ip_tags.tag_number / float(ip_tags.genome_size()) * peak_size
 		self.cov_coefficient = ip_tags.tag_number / float(control_tags.tag_number)
