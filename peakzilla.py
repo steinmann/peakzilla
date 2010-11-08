@@ -23,7 +23,7 @@ from math import fabs
 
 def main():
 	# option parser
-	usage = 'peakzilla [OPTIONS] IP_ALIGNMENT CONTROL_ALIGNMENT > RESULTS'
+	usage = 'peakzilla [OPTIONS] chip.bed control.bed > results.tsv'
 	parser = OptionParser(usage=usage)
 	
 	parser.add_option("-s", "--fragment_size",\
@@ -218,9 +218,10 @@ class PeakModel:
 			minus_peaks = self.find_simple_peaks(chrom, '-')
 			self.determine_shifts(plus_peaks, minus_peaks)
 		# calculate the meidan peak_shift
-		self.peak_shift = int(median(self.peak_shifts))
-		# peak size is 2 * shift size
-		self.peak_size = self.peak_shift * 2
+		if self.peak_shifts:
+			self.peak_shift = int(median(self.peak_shifts))
+			# peak size is 2 * shift size
+			self.peak_size = self.peak_shift * 2
 
 	def find_simple_peaks(self, chrom, strand):
 		# return maxima of tag counts in regions with more tags than threshold
