@@ -67,8 +67,8 @@ def main():
 	peak_model = PeakModel(ip_tags, options.fragment_size, options.model_threshold)
 	
 	# change model threshold until it yields a reasonable number of peaks
-	while peak_model.peaks_incorporated < 800 or peak_model.peaks_incorporated > 1200:
-		if peak_model.peaks_incorporated < 800:
+	while peak_model.peaks_incorporated < 200 or peak_model.peaks_incorporated > 500:
+		if peak_model.peaks_incorporated < 500:
 			options.model_threshold = options.model_threshold / 2
 			print_status('Model threshold was set too high, trying: %.1f'  % options.model_threshold, options.verbose)
 			peak_model = PeakModel(ip_tags, options.fragment_size, options.model_threshold)
@@ -442,13 +442,13 @@ class PeakContainer:
 				peak.calc_fold_enrichment(self.tag_threshold, self.avg_tag_density)
 	
 	def model_tag_distribution(self):
-		# pick top 1000 peaks and build model
+		# pick top 200 peaks and build model
 		ranked_distributions = []
 		for chrom in self.peaks.keys():
 			for peak in self.peaks[chrom]:
 				ranked_distributions.append((peak.tag_count, peak.tag_distribution))
 		# find the tag count of the 1000th largest peak
-		tag_threshold = sorted(ranked_distributions)[-1000][0]
+		tag_threshold = sorted(ranked_distributions)[-200][0]
 		# add tags from highest peaks to the model
 		top_distributions = [i[1] for i in ranked_distributions if i[0] > tag_threshold]
 		n_top_peaks = len(top_distributions)
