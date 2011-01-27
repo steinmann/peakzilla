@@ -188,7 +188,10 @@ class TagContainer:
 			
 	def get_tags(self, chrom, strand):
 		# return the whole array of tags
-		return self.tags[chrom][strand]
+		if chrom in self.tags:
+			return self.tags[chrom][strand]
+		else:
+			return []
 			
 	def get_tag_number(self, chrom, strand):
 		# find out how many tags are mapped to a particular comsomome and strand
