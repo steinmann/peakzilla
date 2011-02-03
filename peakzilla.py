@@ -106,7 +106,7 @@ def main():
 	
 	# write output as bed files
 	print_status('Writing results to file ...', options.verbose)
-	ip_peaks.write_to_stdout(options.fdr)
+	ip_peaks.write_to_stdout(options)
 	print_status('Done!', options.verbose)
 
 class TagContainer:
@@ -259,6 +259,7 @@ class Peak:
 	# class for peak related infromation and fuctions
 	def __init__(self):
 		self.position = None
+		self.tags = ([],[])
 		self.tag_count = 0
 		self.background = 0
 		self.fold_enrichment = 0
@@ -280,6 +281,12 @@ class Peak:
 	def get_score(self):
 		# return tag score
 		return self.fold_enrichment
+		
+	def get_relative_tag_positions(self):
+		# return relative position of tags
+		plus_tags = [tags - position for tags in self.tags[0]]
+		minus_tags = [tags - position for tags in self.tags[1]]
+		return (plus_tags, minus_tags)
 
 class PeakContainer:
 	# a class to identify and classify potential peaks
@@ -316,14 +323,14 @@ class PeakContainer:
 		position = 0
 		while plus_tags and minus_tags:
 			# fill windows
-			while plus_tags and plus_tags[0] < position:
+			while plus_tags and plus_tags[0] < (position + self.peak_shift):
 				plus_window.append(plus_tags.popleft())
 			while minus_tags and minus_tags[0] < (position + self.peak_shift):
 				minus_window.append(minus_tags.popleft())
 			# get rid of old tags not fitting in the window any more
 			while plus_window and plus_window[0] < (position - self.peak_shift):
 				plus_window.popleft()
-			while minus_window and minus_window[0] < position:
+			while minus_window and minus_window[0] < (position - self.peak_shift):
 				minus_window.popleft()
 			# add position to region if over threshold
 			score = len(plus_window) + len(minus_window)
@@ -337,7 +344,7 @@ class PeakContainer:
 				if score >= peak_candidate.tag_count:
 					peak_candidate.tag_count = score
 					peak_candidate.position = position
-					peak_candidate.tags = list(plus_window) + list(minus_window)
+					peak_candidate.tags = (plus_window, minus_window)
 					peak_candidate.survivals = 0
 				# candidate survives if current score is smaller
 				else:
@@ -401,15 +408,15 @@ class PeakContainer:
 	
 	def model_tag_distribution(self):
 		# pick top 200 peak positions and build model
-		ranked_positions = []
+		ranked_peak_tags = []
 		for chrom in self.peaks.keys():
 			for peak in self.peaks[chrom]:
-				ranked_positions.append((peak.tag_count, peak.tag_position))
+				ranked_peak_tags.append((peak.tag_count, peak.tags))
 		# find the tag count of the 200th largest peak
-		tag_threshold = sorted(ranked_positions)[-200][0]
+		tag_threshold = sorted(ranked_peak_tags)[-200][0]
 		# add tags from highest peaks to the model
-		top_positions = [i[1] for i in ranked_positions if i[0] > tag_threshold]
-		n_top_positions = len(top_positions)
+		top_tags = [i[1] for i in ranked_positions if i[0] > tag_threshold]
+		n_top_tags = len(top_tags)
 		plus_model = [0] * peak_size
 		minus_model = [0] * peak_size
 		for position in top_positions:
@@ -448,13 +455,13 @@ class PeakContainer:
 			for peak in self.peaks[chrom]:
 				peak.fdr = score2fdr[str(peak.get_score())]
 
-	def write_to_stdout(self, fdr_cutoff):
+	def write_to_stdout(self, options):
 		# write results to stdout
-		sys.stdout.write('Chromosome\tStart\tEnd\tName\tScore\tSummit\tFoldEnrichment\tDistributionScore\tFDR\n')
+		sys.stdout.write('Chromosome\tStart\tEnd\tName\tScore\tSummit\tFoldEnrichmen\tFDR\n')
 		peak_count = 0
 		for chrom in sorted(self.peaks.keys()):
 			for peak in self.peaks[chrom]:
-				if peak.fdr < fdr_cutoff:
+				if peak.fdr < options.fdr:
 					peak_count += 1
 					summit = peak.position
 					start = summit - self.peak_shift
@@ -465,6 +472,7 @@ class PeakContainer:
 					fdr = peak.fdr
 					output = (chrom, start, end, name, score, summit, enrichment, fdr)
 					sys.stdout.write('%s\t%d\t%d\t%s\t%.2f\t%d\t%.2f\t%.2f\n' % output)
+		print_status('%d peaks detected at FDR %.1f%% \n' % (peak_count, options.fdr), options.verbose)
 
 def print_status(string, boolean):
 	# switchable printing to stderror
