@@ -411,7 +411,7 @@ class PeakContainer:
 		ranked_peak_tags = []
 		for chrom in self.peaks.keys():
 			for peak in self.peaks[chrom]:
-				ranked_peak_tags.append((peak.tag_count, peak.tags))
+				ranked_peak_tags.append((peak.tag_count, peak.get_relative_tag_positions()))
 		# find the tag count of the 200th largest peak
 		tag_threshold = sorted(ranked_peak_tags)[-200][0]
 		# add tags from highest peaks to the model
@@ -419,8 +419,9 @@ class PeakContainer:
 		n_top_tags = len(top_tags)
 		plus_model = [0] * peak_size
 		minus_model = [0] * peak_size
-		for position in top_positions:
-				model = map(add, i, model)
+		for tags in top_tags:
+			plus_model = (add, tags[1], model)
+			minus_model	map(add, tags[1], model)
 		# nromalize model for number of total peaks
 		for i in range(len(model)):
 			model[i] = model[i]/n_top_peaks
