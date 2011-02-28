@@ -81,24 +81,36 @@ def main():
 			
 	# first attempt to find candidate peaks in control sample
 	print_status('Finding potential false positives ...', options.verbose)
-	control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, options.peak_threshold)
+	control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, options.peak_threshold, peak_model.plus_model, peak_model.minus_model)
 	
 	# change peak threshold until it yields a reasonable number of peaks
 	while control_peaks.peak_count < 2000 or control_peaks.peak_count > 10000:
 		if control_peaks.peak_count < 2000:
 			options.peak_threshold = options.peak_threshold / 2
 			print_status('Peak threshold was set too high, trying: %.2f'  % options.peak_threshold, options.verbose)
-			control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, options.peak_threshold)
+			control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, options.peak_threshold, peak_model.plus_model, peak_model.minus_model)
 		else:
 			options.peak_threshold = options.peak_threshold * 1.25
 			print_status('Peak threshold was set too low, trying: %.2f' % options.peak_threshold, options.verbose)
-			control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, options.peak_threshold)
+			control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, options.peak_threshold, peak_model.plus_model, peak_model.minus_model)
 	print_status('%d potential false positives found' % control_peaks.peak_count, options.verbose)
 	
 	# find candidate peaks in IP sample
 	print_status('Finding peak candidates ...', options.verbose)
-	ip_peaks = PeakContainer(ip_tags, control_tags, peak_model.peak_size, options.peak_threshold)
+	ip_peaks = PeakContainer(ip_tags, control_tags, peak_model.peak_size, options.peak_threshold, peak_model.plus_model, peak_model.minus_model)
 	print_status('%d candidate peaks found' % ip_peaks.peak_count, options.verbose)
+	
+	# model tag distribution
+	print_status('Modeling tag distribution ...', options.verbose)
+	#plus_model = convolve(window/window.sum(), ip_peaks.model_tag_distribution()[0])[5:-5]
+	#minus_model = convolve(window/window.sum(), ip_peaks.model_tag_distribution()[1])[5:-5]
+	plus_model = ip_peaks.model_tag_distribution()[0]
+	minus_model = ip_peaks.model_tag_distribution()[1]
+	
+	# find peaks using emirical model
+	print_status('Finding peaks with empirical peak model ...', options.verbose)
+	ip_peaks = PeakContainer(ip_tags, control_tags, peak_model.peak_size, options.peak_threshold, plus_model, minus_model)
+	control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, options.peak_threshold, plus_model, minus_model)
 	
 	# calculate FDR
 	print_status('Calculating FDR ...', options.verbose)
@@ -202,6 +214,8 @@ class PeakShiftModel:
 		self.peak_shifts = []
 		self.peak_shift = None
 		self.peak_size = None
+		self.plus_model = None
+		self.minus_model = None
 		self.peaks_incorporated = 0
 		self.build()
 
@@ -216,6 +230,8 @@ class PeakShiftModel:
 			self.peak_shift = int(median(self.peak_shifts))
 			# peak size is 2 * shift size + 1
 			self.peak_size = self.peak_shift * 2 + 1
+			self.plus_model = [2] * (self.peak_shift + 1) + [0] * self.peak_shift
+			self.minus_model = [0] * self.peak_shift + [2] * (self.peak_shift + 1)
 
 	def find_simple_peaks(self, chrom, strand):
 		# return maxima of tag counts in regions with more tags than threshold
@@ -255,20 +271,25 @@ class PeakShiftModel:
 					break
 				minus_peaks.popleft()
 
+
 class Peak:
 	# class for peak related infromation and fuctions
 	def __init__(self):
+		self.size = 0
+		self.shift = 0
 		self.position = None
 		self.tags = ([],[])
 		self.tag_count = 0
 		self.background = 0
 		self.fold_enrichment = 0
+		self.plus_freq_dist = None
+		self.minus_freq_dist = None
 		self.fdr = None
 		self.survivals = 0
 
 	def __len__(self):
 		# for truth testing and number of tags
-		return self.tag_count
+		return int(self.tag_count)
 	
 	def calc_fold_enrichment(self, tag_threshold, avg_tag_density):
 		# calculate fold enrichment minus local background over avg background
@@ -282,15 +303,54 @@ class Peak:
 		# return tag score
 		return self.fold_enrichment
 		
-	def get_relative_tag_positions(self):
-		# return relative position of tags
-		plus_tags = [tags - position for tags in self.tags[0]]
-		minus_tags = [tags - position for tags in self.tags[1]]
-		return (plus_tags, minus_tags)
+	def get_tag_distributions(self):
+		# return relative position of tag
+		plus_tags = [tags - self.position + self.shift for tags in self.tags[0]]
+		minus_tags = [tags - self.position + self.shift for tags in self.tags[1]]
+		plus_distribution = [0] * (self.size)
+		minus_distribution = [0] * (self.size)
+		for i in plus_tags:
+			plus_distribution[i] += 1
+		for i in minus_tags:
+			minus_distribution[i] += 1
+		self.plus_freq_dist = [i/float(len(plus_distribution)) for i in plus_distribution]
+		self.minus_freq_dist = [i/float(len(minus_distribution)) for i in minus_distribution]
+		return (plus_distribution, minus_distribution)
+	
+	def calc_tag_distribution(self, peak_shift):
+		# normalize tags for position
+		self.tags = [tag - self.position + peak_shift for tag in self.tags]
+		self.tag_distribution = [0] * peak_shift * 2
+		for i in self.tags:
+			# project tags to list
+			self.tag_distribution[i] += 1
+		# calculate frequency of tag at position
+		self.tag_distribution = [i/float(self.tag_count) for i in self.tag_distribution]
+
+	def smooth_distribution(self, filter_width):
+		# use a flat moving window to improve S/N ratio
+		filter_width = int(filter_width)
+		if not filter_width % 2:
+			# if filter_width is even number add one
+			filter_width += 1
+		# use a flat moving window other were tested and performed worse
+		window=ones(filter_width,'d')
+		# smooth by convolution of the singal with the window
+		self.tag_distribution = list(convolve(window/window.sum(), self.tag_distribution, mode='valid'))
+		
+	def calc_distribution_score(self, dist_model):
+		# calculate the percentage of similarity between tag dist and model
+		overlaps = []
+		for i in range(len(dist_model)):
+			peak_freq = self.tag_distribution[i]
+			model_freq = dist_model[i]
+			overlap = 1 - (fabs(model_freq - peak_freq)/(model_freq + peak_freq))
+			overlaps.append(overlap)
+		self.distribution_score = sum(overlaps) / len(overlaps)
 
 class PeakContainer:
 	# a class to identify and classify potential peaks
-	def __init__(self, ip_tags, control_tags, peak_size, fold_threshold):
+	def __init__(self, ip_tags, control_tags, peak_size, fold_threshold, plus_model, minus_model):
 		self.ip_tags = ip_tags
 		self.control_tags = control_tags
 		self.peak_size = peak_size
@@ -298,6 +358,8 @@ class PeakContainer:
 		self.tag_threshold = ip_tags.tag_number / float(ip_tags.genome_size()) * peak_size * fold_threshold
 		self.avg_tag_density = ip_tags.tag_number / float(ip_tags.genome_size()) * peak_size
 		self.cov_coefficient = ip_tags.tag_number / float(control_tags.tag_number)
+		self.plus_model = plus_model
+		self.minus_model = minus_model
 		self.peaks = {}
 		self.peak_count = 0
 		self.build()
@@ -321,11 +383,12 @@ class PeakContainer:
 		score_buffer = deque([])
 		peak_candidate = Peak()
 		position = 0
+
 		while plus_tags and minus_tags:
 			# fill windows
-			while plus_tags and plus_tags[0] < (position + self.peak_shift):
+			while plus_tags and plus_tags[0] <= (position + self.peak_shift):
 				plus_window.append(plus_tags.popleft())
-			while minus_tags and minus_tags[0] < (position + self.peak_shift):
+			while minus_tags and minus_tags[0] <= (position + self.peak_shift):
 				minus_window.append(minus_tags.popleft())
 			# get rid of old tags not fitting in the window any more
 			while plus_window and plus_window[0] < (position - self.peak_shift):
@@ -333,7 +396,7 @@ class PeakContainer:
 			while minus_window and minus_window[0] < (position - self.peak_shift):
 				minus_window.popleft()
 			# add position to region if over threshold
-			score = len(plus_window) + len(minus_window)
+			score = calculate_score(plus_window, position, self.minus_model) + calculate_score(minus_window, position, self.plus_model)
 			if score > self.tag_threshold:
 				# save all scores in buffer
 				score_buffer.append(score)
@@ -342,10 +405,15 @@ class PeakContainer:
 					score_buffer.popleft()
 				# if current score is as big or bigger, consider it instead
 				if score >= peak_candidate.tag_count:
+					peak_candidate.size = self.peak_size
+					peak_candidate.shift = self.peak_shift
 					peak_candidate.tag_count = score
-					peak_candidate.position = position
-					peak_candidate.tags = (plus_window, minus_window)
+					peak_candidate.tags = (list(plus_window), list(minus_window))
 					peak_candidate.survivals = 0
+					if position >= 0:
+						peak_candidate.position = position
+					else:
+						peak_candidate.position = 0
 				# candidate survives if current score is smaller
 				else:
 					peak_candidate.survivals += 1
@@ -385,18 +453,18 @@ class PeakContainer:
 		minus_window = deque([])
 		for peak in self.peaks[chrom]:
 			# fill windows
-			while plus_tags and plus_tags[0] < peak.position:
+			while plus_tags and plus_tags[0] <= (peak.position + self.peak_shift):
 				plus_window.append(plus_tags.popleft())
-			while minus_tags and minus_tags[0] < (peak.position + self.peak_shift):
+			while minus_tags and minus_tags[0] <= (peak.position + self.peak_shift):
 				minus_window.append(minus_tags.popleft())
 			# get rid of old tags not fitting in the window any more
 			while plus_window and plus_window[0] < (peak.position - self.peak_shift):
 				plus_window.popleft()
-			while minus_window and minus_window[0] < peak.position:
+			while minus_window and minus_window[0] < (peak.position - self.peak_shift):
 				minus_window.popleft()
 			# calculate normalized background level
 			# add position to region if over threshold
-			background = len(plus_window) + len(minus_window)
+			background = calculate_score(plus_window, peak.position, self.minus_model) + calculate_score(minus_window, peak.position, self.plus_model)
 			nrom_background = background * self.cov_coefficient
 			peak.background = nrom_background
 	
@@ -411,21 +479,24 @@ class PeakContainer:
 		ranked_peak_tags = []
 		for chrom in self.peaks.keys():
 			for peak in self.peaks[chrom]:
-				ranked_peak_tags.append((peak.tag_count, peak.get_relative_tag_positions()))
+				ranked_peak_tags.append((peak.tag_count, peak.get_tag_distributions()))
 		# find the tag count of the 200th largest peak
 		tag_threshold = sorted(ranked_peak_tags)[-200][0]
 		# add tags from highest peaks to the model
-		top_tags = [i[1] for i in ranked_positions if i[0] > tag_threshold]
-		n_top_tags = len(top_tags)
-		plus_model = [0] * peak_size
-		minus_model = [0] * peak_size
+		top_tags = [i[1] for i in ranked_peak_tags if i[0] > tag_threshold]
+		n_top_peaks = len(top_tags)
+		plus_model = [0] * self.peak_size
+		minus_model = [0] * self.peak_size
 		for tags in top_tags:
-			plus_model = (add, tags[1], model)
-			minus_model	map(add, tags[1], model)
+			plus_model = map(add, tags[0], plus_model)
+			minus_model = map(add, tags[1], minus_model)
 		# nromalize model for number of total peaks
-		for i in range(len(model)):
-			model[i] = model[i]/n_top_peaks
-		return model
+		for i in range(len(plus_model)):
+			plus_model[i] = plus_model[i]/float(n_top_peaks)
+			minus_model[i] = minus_model[i]/float(n_top_peaks)
+		plus_model = [i * len(plus_model)/sum(plus_model) for i in plus_model]
+		minus_model = [i * len(minus_model)/sum(minus_model) for i in minus_model]
+		return (plus_model, minus_model)
 
 	def calculate_fdr(self, control_peaks):
 		# create a dictionary to correlate scores with FDR values
@@ -462,7 +533,7 @@ class PeakContainer:
 		peak_count = 0
 		for chrom in sorted(self.peaks.keys()):
 			for peak in self.peaks[chrom]:
-				if peak.fdr < options.fdr:
+				if peak.fdr <= options.fdr:
 					peak_count += 1
 					summit = peak.position
 					start = summit - self.peak_shift
@@ -479,6 +550,12 @@ def print_status(string, boolean):
 	# switchable printing to stderror
 	if boolean:
 		sys.stderr.write('%s %s\n' % (strftime("%H:%M:%S", localtime()), string))
+
+def calculate_score(tags, position, model):
+	score = 0
+	for tag in tags:
+		score += model[tag-position]
+	return score
 	
 if __name__ == '__main__':
     try:
