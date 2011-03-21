@@ -7,7 +7,7 @@
 # published by the Free Software Foundation.
 
 try:
-	from numpy import median, convolve, ones
+	from numpy import median, convolve, ones, std
 except ImportError:
 	sys.stderr.write("Failed to import from numpy, please install numpy!\n")
 	sys.exit(1)
@@ -77,7 +77,8 @@ def main():
 			print_status('Model threshold was set too low, trying: %.1f' % options.model_threshold, options.verbose)
 			peak_model = PeakShiftModel(ip_tags, options.fragment_size, options.model_threshold)
 	print_status('Used best %d peaks for modeling ...' % peak_model.peaks_incorporated, options.verbose)
-	print_status('Peak size is %d bp' % peak_model.peak_size, options.verbose)	
+	print_status('Peak size is %d bp' % peak_model.peak_size, options.verbose)
+	print_status('Peak size SD is %d bp' % peak_model.peak_size_std, options.verbose)
 			
 	# first attempt to find candidate peaks in control sample
 	print_status('Finding potential false positives ...', options.verbose)
@@ -102,11 +103,15 @@ def main():
 	
 	# model tag distribution
 	print_status('Modeling tag distribution ...', options.verbose)
-	#plus_model = convolve(window/window.sum(), ip_peaks.model_tag_distribution()[0])[5:-5]
-	#minus_model = convolve(window/window.sum(), ip_peaks.model_tag_distribution()[1])[5:-5]
+	#window=ones(11,'d')
+	#plus_model = convolve(window/window.sum(), ip_peaks.model_tag_distribution()[0], mode='same')
+	#minus_model = convolve(window/window.sum(), ip_peaks.model_tag_distribution()[1], mode='same')
 	plus_model = ip_peaks.model_tag_distribution()[0]
 	minus_model = ip_peaks.model_tag_distribution()[1]
-	
+	print 'plus = c',
+	print tuple(plus_model)
+	print 'minus = c',
+	print tuple(minus_model)
 	# find peaks using emirical model
 	print_status('Finding peaks with empirical peak model ...', options.verbose)
 	ip_peaks = PeakContainer(ip_tags, control_tags, peak_model.peak_size, options.peak_threshold, plus_model, minus_model)
@@ -118,7 +123,7 @@ def main():
 	
 	# write output as bed files
 	print_status('Writing results to file ...', options.verbose)
-	ip_peaks.write_to_stdout(options)
+	#ip_peaks.write_to_stdout(options)
 	print_status('Done!', options.verbose)
 
 class TagContainer:
@@ -214,6 +219,7 @@ class PeakShiftModel:
 		self.peak_shifts = []
 		self.peak_shift = None
 		self.peak_size = None
+		self.peak_size_std = None
 		self.plus_model = None
 		self.minus_model = None
 		self.peaks_incorporated = 0
@@ -232,6 +238,7 @@ class PeakShiftModel:
 			self.peak_size = self.peak_shift * 2 + 1
 			self.plus_model = [2] * (self.peak_shift + 1) + [0] * self.peak_shift
 			self.minus_model = [0] * self.peak_shift + [2] * (self.peak_shift + 1)
+			self.peak_size_std = std([shift * 2 + 1 for shift in self.peak_shifts])
 
 	def find_simple_peaks(self, chrom, strand):
 		# return maxima of tag counts in regions with more tags than threshold
@@ -481,15 +488,18 @@ class PeakContainer:
 			for peak in self.peaks[chrom]:
 				ranked_peak_tags.append((peak.tag_count, peak.get_tag_distributions()))
 		# find the tag count of the 200th largest peak
-		tag_threshold = sorted(ranked_peak_tags)[-200][0]
+		tag_threshold = sorted(ranked_peak_tags)[-500][0]
 		# add tags from highest peaks to the model
 		top_tags = [i[1] for i in ranked_peak_tags if i[0] > tag_threshold]
 		n_top_peaks = len(top_tags)
 		plus_model = [0] * self.peak_size
 		minus_model = [0] * self.peak_size
+		window=ones(21,'d')
 		for tags in top_tags:
-			plus_model = map(add, tags[0], plus_model)
-			minus_model = map(add, tags[1], minus_model)
+			plus_tags = convolve(window/window.sum(), tags[0], mode='same')
+			minus_tags = convolve(window/window.sum(), tags[1], mode='same')
+			plus_model = map(add, plus_tags, plus_model)
+			minus_model = map(add, minus_tags, minus_model)
 		# nromalize model for number of total peaks
 		for i in range(len(plus_model)):
 			plus_model[i] = plus_model[i]/float(n_top_peaks)
