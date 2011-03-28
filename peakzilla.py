@@ -28,15 +28,15 @@ def main():
 	
 	parser.add_option("-s", "--fragment_size",\
 	type = "int", dest="fragment_size", default="200",\
-	help = "fragment size in bp used to define the upper limit of peak size for modeling: default=200")
+	help = "upper limit of fragment size in bp: default=200")
 	
 	parser.add_option("-m", "--model_threshold",\
 	type = "float", dest="model_threshold", default="120",\
-	help = "fold enrichment threshold over average read density for building the peak model: default=120")
+	help = "fold enrichment threshold for modeling: default=120")
 	
 	parser.add_option("-t", "--peak_threshold",\
 	type = "float", dest="peak_threshold", default="40",\
-	help = "fold enrichment threshold over average read density for finding candidate peaks: default=40")
+	help = "fold enrichment threshold for peak finding: default=40")
 	
 	parser.add_option("-f", "--fdr",\
 	type = "float", dest="fdr", default='1',\
@@ -49,7 +49,7 @@ def main():
 	# read arguments and options
 	(options, args) = parser.parse_args()
 	if len(args) != 2:
-		# if incorrect number of arguments are provided return help message
+		# return help message if argment number is incorrect
 		parser.print_help()
 		sys.exit(0)
 	ip = args[0]
@@ -105,17 +105,22 @@ def main():
 	print_status('Modeling tag distribution ...', options.verbose)
 	plus_model = ip_peaks.model_tag_distribution()[0]
 	minus_model = ip_peaks.model_tag_distribution()[1]
-	# find peaks using emirical model
-	print_status('Finding peaks with empirical peak model ...', options.verbose)
-	ip_peaks = PeakContainer(ip_tags, control_tags, peak_model.peak_size, options.peak_threshold, plus_model, minus_model)
-	control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, options.peak_threshold, plus_model, minus_model)
 	
-	"""
+
 	# output model in an R friendly fashion
 	print 'plus = c',
 	print tuple(plus_model)
 	print 'minus = c',
-	print tuple(minus_model)"""
+	print tuple(minus_model)
+
+	# find peaks using emirical model
+	print_status('Finding peaks with empirical peak model ...', options.verbose)
+	control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, options.peak_threshold, plus_model, minus_model)
+	print_status('%d potential false positives found' % control_peaks.peak_count, options.verbose)
+	ip_peaks = PeakContainer(ip_tags, control_tags, peak_model.peak_size, options.peak_threshold, plus_model, minus_model)
+	print_status('%d candidate peaks found' % ip_peaks.peak_count, options.verbose)
+	
+
 	
 	print_status('Calculating tag distribution scores ...', options.verbose)
 	ip_peaks.determine_distribution_scores(plus_model, minus_model)
@@ -290,8 +295,7 @@ class Peak:
 		self.shift = 0
 		self.position = None
 		self.tags = ([],[])
-		self.tag_count = 0
-		self.tag_score = 0
+		self.score = 0
 		self.background = 0
 		self.fold_enrichment = 0
 		self.plus_freq_dist = None
@@ -302,7 +306,7 @@ class Peak:
 
 	def __len__(self):
 		# for truth testing and number of tags
-		return int(self.tag_count)
+		return int(self.score)
 	
 	def calc_fold_enrichment(self, tag_threshold, avg_tag_density):
 		# calculate fold enrichment minus local background over avg background
@@ -310,11 +314,11 @@ class Peak:
 			# if background is really hight dont consider this region
 			self.fold_enrichment = 0
 		else:
-			self.fold_enrichment = (self.tag_count - self.background) / avg_tag_density
+			self.fold_enrichment = (self.score - self.background) / avg_tag_density
 		
 	def get_score(self):
 		# return tag score
-		return self.fold_enrichment * self.dist_score
+		return self.score * self.dist_score
 		
 	def determine_tag_distribution(self, filter_width):
 		# return smoothed frequency distribution position of tags
@@ -328,15 +332,16 @@ class Peak:
 			plus_dist[i] += 1
 		for i in minus_tags:
 			minus_dist[i] += 1
-		# calculate normalized tag weight at each position
-		avg_tag_count = float((sum(plus_dist) + sum(minus_dist))) / 2
-		self.plus_freq_dist = [i/(avg_tag_count / self.size) for i in plus_dist]
-		self.minus_freq_dist = [i/(avg_tag_count / self.size) for i in minus_dist]
 		# use a flat moving window to improve S/N ratio
 		window=ones(filter_width,'d')
 		# smooth by convolution of the singal with the window
-		self.plus_freq_dist = list(convolve(window/window.sum(), self.plus_freq_dist, mode='same'))
-		self.minus_freq_dist = list(convolve(window/window.sum(), self.minus_freq_dist, mode='same'))
+		self.plus_freq_dist = list(convolve(window/window.sum(), plus_dist, mode='same'))
+		self.minus_freq_dist = list(convolve(window/window.sum(), minus_dist, mode='same'))
+		# normalize distribution height
+		norm_factor = (sum(self.plus_freq_dist) + sum(self.minus_freq_dist)) / self.size
+		for i in range(self.size):
+			self.plus_freq_dist[i] = self.plus_freq_dist[i]/norm_factor
+			self.minus_freq_dist[i] = self.minus_freq_dist[i]/norm_factor
 		
 	def calc_distribution_score(self, plus_model, minus_model):
 		# calculate the percentage of similarity between tag dist and model
@@ -372,6 +377,9 @@ class PeakContainer:
 		self.minus_model = minus_model
 		self.peaks = {}
 		self.peak_count = 0
+		self.plus_window = deque([])
+		self.minus_window = deque([])
+		self.position = 0
 		self.build()
 
 	def build(self):
@@ -380,7 +388,15 @@ class PeakContainer:
 			self.find_peaks(chrom)
 			self.measure_background(chrom)
 			self.determine_fold_enrichment(chrom)
-		
+
+	def calculate_score(self):
+		score = 0
+		for tag in self.plus_window:
+			score += self.plus_model[tag - self.position + self.peak_shift]
+		for tag in self.minus_window:
+			score += self.minus_model[tag - self.position + self.peak_shift]
+		return score
+	
 	def find_peaks(self, chrom):
 		# identify peak candidates on chromosome
 		self.peaks[chrom] = []
@@ -388,25 +404,25 @@ class PeakContainer:
 		plus_tags = deque(self.ip_tags.get_tags(chrom, '+'))
 		minus_tags = deque(self.ip_tags.get_tags(chrom, '-'))
 		# initalize windows and stuff
-		plus_window = deque([])
-		minus_window = deque([])
 		score_buffer = deque([])
 		peak_candidate = Peak()
-		position = 0
-
+		# reset scanning windows and position on chromosome
+		self.plus_window = deque([])
+		self.minus_window = deque([])
+		self.position = 0
 		while plus_tags and minus_tags:
 			# fill windows
-			while plus_tags and plus_tags[0] <= (position + self.peak_shift):
-				plus_window.append(plus_tags.popleft())
-			while minus_tags and minus_tags[0] <= (position + self.peak_shift):
-				minus_window.append(minus_tags.popleft())
+			while plus_tags and plus_tags[0] <= (self.position + self.peak_shift):
+				self.plus_window.append(plus_tags.popleft())
+			while minus_tags and minus_tags[0] <= (self.position + self.peak_shift):
+				self.minus_window.append(minus_tags.popleft())
 			# get rid of old tags not fitting in the window any more
-			while plus_window and plus_window[0] < (position - self.peak_shift):
-				plus_window.popleft()
-			while minus_window and minus_window[0] < (position - self.peak_shift):
-				minus_window.popleft()
+			while self.plus_window and self.plus_window[0] < (self.position - self.peak_shift):
+				self.plus_window.popleft()
+			while self.minus_window and self.minus_window[0] < (self.position - self.peak_shift):
+				self.minus_window.popleft()
 			# add position to region if over threshold
-			score = calculate_score(plus_window, position, self.peak_shift, self.minus_model) + calculate_score(minus_window, position, self.peak_shift, self.plus_model)
+			score = self.calculate_score()
 			if score > self.tag_threshold:
 				# save all scores in buffer
 				score_buffer.append(score)
@@ -414,14 +430,14 @@ class PeakContainer:
 				if len(score_buffer) > self.peak_size:
 					score_buffer.popleft()
 				# if current score is as big or bigger, consider it instead
-				if score >= peak_candidate.tag_count:
+				if score >= peak_candidate.score:
 					peak_candidate.size = self.peak_size
 					peak_candidate.shift = self.peak_shift
-					peak_candidate.tag_count = score
-					peak_candidate.tags = (list(plus_window), list(minus_window))
+					peak_candidate.score = score
+					peak_candidate.tags = (list(self.plus_window), list(self.minus_window))
 					peak_candidate.survivals = 0
-					if position >= 0:
-						peak_candidate.position = position
+					if self.position >= 0:
+						peak_candidate.position = self.position
 					else:
 						peak_candidate.position = 0
 				# candidate survives if current score is smaller
@@ -431,23 +447,23 @@ class PeakContainer:
 				if peak_candidate.survivals == self.peak_shift:
 					# check score buffer to see whether candidate is a maximum
 					# candidate is in the middle of the buffer now
-					if peak_candidate.tag_count == max(score_buffer):
+					if peak_candidate.score == max(score_buffer):
 						self.add_peak(peak_candidate, chrom)
 					# consider current score next, reset survivals
 					peak_candidate = Peak()
 				# while in enriched region move windows in 1 bp steps
-				position += 1
+				self.position += 1
 			else:
 				# if we still have a candidate check whether its a max and add
 				if peak_candidate:
-					if peak_candidate.tag_count == max(score_buffer):
+					if peak_candidate.score == max(score_buffer):
 						self.add_peak(peak_candidate, chrom)
 					peak_candidate = Peak()
 					score_buffer = deque([])
 				# determine the next informative position in the genome and move there
 				if plus_tags and minus_tags:
-					distance_to_next = plus_tags[0] - position + 1
-				position += distance_to_next
+					distance_to_next = plus_tags[0] - self.position + 1
+				self.position += distance_to_next
 
 	def add_peak(self, peak, chrom):
 		# calculate tag distribution frequency and add peak to container
@@ -460,22 +476,23 @@ class PeakContainer:
 		plus_tags = deque(self.control_tags.get_tags(chrom, '+'))
 		minus_tags = deque(self.control_tags.get_tags(chrom, '-'))
 		# convert to deque for super fast and efficient popleft
-		plus_window = deque([])
-		minus_window = deque([])
+		self.plus_window = deque([])
+		self.minus_window = deque([])
 		for peak in self.peaks[chrom]:
 			# fill windows
 			while plus_tags and plus_tags[0] <= (peak.position + self.peak_shift):
-				plus_window.append(plus_tags.popleft())
+				self.plus_window.append(plus_tags.popleft())
 			while minus_tags and minus_tags[0] <= (peak.position + self.peak_shift):
-				minus_window.append(minus_tags.popleft())
+				self.minus_window.append(minus_tags.popleft())
 			# get rid of old tags not fitting in the window any more
-			while plus_window and plus_window[0] < (peak.position - self.peak_shift):
-				plus_window.popleft()
-			while minus_window and minus_window[0] < (peak.position - self.peak_shift):
-				minus_window.popleft()
+			while self.plus_window and self.plus_window[0] < (peak.position - self.peak_shift):
+				self.plus_window.popleft()
+			while self.minus_window and self.minus_window[0] < (peak.position - self.peak_shift):
+				self.minus_window.popleft()
 			# calculate normalized background level
 			# add position to region if over threshold
-			background = calculate_score(plus_window, peak.position, self.peak_shift, self.minus_model) + calculate_score(minus_window, peak.position, self.peak_shift, self.plus_model)
+			self.position = peak.position
+			background = self.calculate_score()
 			nrom_background = background * self.cov_coefficient
 			peak.background = nrom_background
 	
@@ -490,12 +507,11 @@ class PeakContainer:
 		ranked_peak_tags = []
 		for chrom in self.peaks.keys():
 			for peak in self.peaks[chrom]:
-				ranked_peak_tags.append((peak.tag_count, (peak.plus_freq_dist, peak.minus_freq_dist)))
+				ranked_peak_tags.append((peak.score, (peak.plus_freq_dist, peak.minus_freq_dist)))
 		# find the tag count of the 200th largest peak
 		tag_threshold = sorted(ranked_peak_tags)[-200][0]
 		# add tags from highest peaks to the model
 		top_tags = [i[1] for i in ranked_peak_tags if i[0] > tag_threshold]
-		n_top_peaks = len(top_tags)
 		plus_model = [0] * self.peak_size
 		minus_model = [0] * self.peak_size
 		for tags in top_tags:
@@ -504,9 +520,10 @@ class PeakContainer:
 			plus_model = map(add, plus_tags, plus_model)
 			minus_model = map(add, minus_tags, minus_model)
 		# nromalize model for number of total peaks
-		for i in range(len(plus_model)):
-			plus_model[i] = plus_model[i]/float(n_top_peaks)
-			minus_model[i] = minus_model[i]/float(n_top_peaks)
+		norm_factor = (sum(plus_model) + sum(minus_model)) / self.peak_size
+		for i in range(self.peak_size):
+			plus_model[i] = plus_model[i]/norm_factor
+			minus_model[i] = minus_model[i]/norm_factor
 		return (plus_model, minus_model)
 
 	def determine_distribution_scores(self, plus_model, minus_model):
@@ -568,12 +585,6 @@ def print_status(string, boolean):
 	# switchable printing to stderror
 	if boolean:
 		sys.stderr.write('%s %s\n' % (strftime("%H:%M:%S", localtime()), string))
-
-def calculate_score(tags, position, shift, model):
-	score = 0
-	for tag in tags:
-		score += model[tag - position + shift]
-	return score
 	
 if __name__ == '__main__':
     try:
