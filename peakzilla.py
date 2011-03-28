@@ -14,6 +14,7 @@ except ImportError:
 
 import sys
 import csv
+import os
 from operator import add, mul
 from time import strftime, localtime
 from collections import deque
@@ -105,13 +106,7 @@ def main():
 	print_status('Modeling tag distribution ...', options.verbose)
 	plus_model = ip_peaks.model_tag_distribution()[0]
 	minus_model = ip_peaks.model_tag_distribution()[1]
-	
-
-	# output model in an R friendly fashion
-	print 'plus = c',
-	print tuple(plus_model)
-	print 'minus = c',
-	print tuple(minus_model)
+	create_model_plot(plus_model, minus_model)
 
 	# find peaks using emirical model
 	print_status('Finding peaks with empirical peak model ...', options.verbose)
@@ -133,7 +128,37 @@ def main():
 	# write output as bed files
 	print_status('Writing results to file ...', options.verbose)
 	ip_peaks.write_to_stdout(options)
+	
+	# write peaks in input to file
+	print_status('Writing input peaks to file ...', options.verbose)
+	control_peaks.write_artifact_peaks()
 	print_status('Done!', options.verbose)
+
+def create_model_plot(plus_model, minus_model):
+	# output model in an R friendly fashion
+		f = open('model.R', 'w')
+		f.close()
+		f = open('model.R', 'a')
+		f.write('plus = c',)
+		f.write(str(tuple(plus_model))+'\n')
+		f.write('minus = c',)
+		f.write(str(tuple(minus_model))+'\n')
+		f.write('pdf(file=\'model.pdf\')\n')
+		f.write('shift = (length(plus) - 1) / 2\n')
+		f.write('plot(seq(-shift,shift), plus,type=\'l\', col=\'red\')\n')
+		f.write('lines(seq(-shift,shift), minus, col=\'blue\')\n')
+		f.write('dev.off()')
+		f.close()
+		try:
+			os.system('R --slave < model.R')
+		except:
+			print_status('You might want to install R ...', True)
+			
+	
+def print_status(string, boolean):
+	# switchable printing to stderror
+	if boolean:
+		sys.stderr.write('%s %s\n' % (strftime("%H:%M:%S", localtime()), string))
 
 class TagContainer:
 	# class for loading, storing and manipulating sequence tags
@@ -318,7 +343,7 @@ class Peak:
 		
 	def get_score(self):
 		# return tag score
-		return self.score * self.dist_score
+		return self.fold_enrichment * self.dist_score
 		
 	def determine_tag_distribution(self, filter_width):
 		# return smoothed frequency distribution position of tags
@@ -580,11 +605,28 @@ class PeakContainer:
 					output = (chrom, start, end, name, summit, score, enrichment, dist_score, fdr)
 					sys.stdout.write('%s\t%d\t%d\t%s\t%d\t%.2f\t%.2f\t%.2f\t%.2f\n' % output)
 		print_status('%d peaks detected at FDR %.1f%% \n' % (peak_count, options.fdr), options.verbose)
-
-def print_status(string, boolean):
-	# switchable printing to stderror
-	if boolean:
-		sys.stderr.write('%s %s\n' % (strftime("%H:%M:%S", localtime()), string))
+	
+	def write_artifact_peaks(self):
+	# write peaks found in input to file
+		f = open('peak_in_input.tsv', 'w')
+		f.write('Chromosome\tStart\tEnd\tName\tSummit\tScore\tFoldEnrichmen\tDistributionScore\n')
+		f.close()
+		peak_count = 0
+		for chrom in sorted(self.peaks.keys()):
+			for peak in self.peaks[chrom]:
+				if peak.get_score() > 1:
+					peak_count += 1
+					summit = peak.position
+					start = summit - self.peak_shift
+					end = summit + self.peak_shift
+					name = chrom + '_Peak_' + str(peak_count)
+					score = peak.get_score()
+					enrichment = peak.fold_enrichment
+					dist_score = peak.dist_score
+					output = (chrom, start, end, name, summit, score, enrichment, dist_score)
+					f = open('peak_in_input.tsv', 'a')
+					f.write('%s\t%d\t%d\t%s\t%d\t%.2f\t%.2f\t%.2f\n' % output)
+					f.close()
 	
 if __name__ == '__main__':
     try:
