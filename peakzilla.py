@@ -7,7 +7,8 @@
 # published by the Free Software Foundation.
 
 try:
-	from numpy import median, convolve, ones, std
+	from numpy import median, convolve, ones, std, array as n_array
+
 except ImportError:
 	sys.stderr.write("Failed to import from numpy, please install numpy!\n")
 	sys.exit(1)
@@ -15,12 +16,16 @@ except ImportError:
 import sys
 import csv
 import os
+from cPickle import dump
 from operator import add, mul
 from time import strftime, localtime
 from collections import deque
 from array import array
 from optparse import OptionParser
-from math import fabs
+from math import fabs, isnan
+from scipy.stats import chisquare
+from copy import copy
+
 
 def main():
 	# option parser
@@ -62,6 +67,10 @@ def main():
 	control_tags = TagContainer()
 	ip_tags(ip)
 	control_tags(control)
+	
+	# report tag number
+	print_status('Tags in IP: %d' % ip_tags.tag_number, options.verbose)
+	print_status('Tags in control: %d' % control_tags.tag_number, options.verbose)
 
 	# first attempt of modeling peak size
 	print_status('Modeling peak size and shift ...', options.verbose)
@@ -106,7 +115,13 @@ def main():
 	print_status('Modeling tag distribution ...', options.verbose)
 	plus_model = ip_peaks.model_tag_distribution()[0]
 	minus_model = ip_peaks.model_tag_distribution()[1]
-	create_model_plot(plus_model, minus_model)
+	
+	# plot model using R
+	create_model_plot(plus_model, minus_model, ip)
+	
+	# serialize model
+	filename = ip[:-4] + '_model.pkl'
+	dump((plus_model, minus_model), open(filename, 'w'))
 
 	# find peaks using emirical model
 	print_status('Finding peaks with empirical peak model ...', options.verbose)
@@ -115,8 +130,7 @@ def main():
 	ip_peaks = PeakContainer(ip_tags, control_tags, peak_model.peak_size, options.peak_threshold, plus_model, minus_model)
 	print_status('%d candidate peaks found' % ip_peaks.peak_count, options.verbose)
 	
-
-	
+	# calculate distribution scores
 	print_status('Calculating tag distribution scores ...', options.verbose)
 	ip_peaks.determine_distribution_scores(plus_model, minus_model)
 	control_peaks.determine_distribution_scores(plus_model, minus_model)
@@ -131,26 +145,28 @@ def main():
 	
 	# write peaks in input to file
 	print_status('Writing input peaks to file ...', options.verbose)
-	control_peaks.write_artifact_peaks()
+	control_peaks.write_artifact_peaks(control)
 	print_status('Done!', options.verbose)
 
-def create_model_plot(plus_model, minus_model):
+def create_model_plot(plus_model, minus_model, ip_file_name):
 	# output model in an R friendly fashion
-		f = open('model.R', 'w')
+		filename = ip_file_name[:-4] + '_model.R'
+		pdf_name = ip_file_name[:-4] + '_model.pdf'
+		f = open(filename, 'w')
 		f.close()
-		f = open('model.R', 'a')
+		f = open(filename, 'a')
 		f.write('plus = c',)
 		f.write(str(tuple(plus_model))+'\n')
 		f.write('minus = c',)
 		f.write(str(tuple(minus_model))+'\n')
-		f.write('pdf(file=\'model.pdf\')\n')
+		f.write('pdf(file=\'%s\')\n' % pdf_name)
 		f.write('shift = (length(plus) - 1) / 2\n')
 		f.write('plot(seq(-shift,shift), plus,type=\'l\', col=\'red\')\n')
 		f.write('lines(seq(-shift,shift), minus, col=\'blue\')\n')
 		f.write('dev.off()')
 		f.close()
 		try:
-			os.system('R --slave < model.R')
+			os.system('R --slave < %s > /dev/null' % filename)
 		except:
 			print_status('You might want to install R ...', True)
 			
@@ -242,6 +258,7 @@ class TagContainer:
 	def get_chrom_names(self):
 		# retreive a sorted list of all chromosome names
 		return self.tags.keys()
+		
 
 class PeakShiftModel:
 	# class for modeling peak size and strand shift
@@ -322,29 +339,31 @@ class Peak:
 		self.tags = ([],[])
 		self.score = 0
 		self.background = 0
+		self.median_score_ip = None
+		self.median_score_control = None
 		self.fold_enrichment = 0
 		self.plus_freq_dist = None
 		self.minus_freq_dist = None
 		self.fdr = None
 		self.dist_score = None
 		self.survivals = 0
+		self.plus_reg_tags_ip = None
+		self.plus_reg_tags_control = None
 
 	def __len__(self):
 		# for truth testing and number of tags
 		return int(self.score)
 	
-	def calc_fold_enrichment(self, tag_threshold, avg_tag_density):
-		# calculate fold enrichment minus local background over avg background
-		if self.background > tag_threshold * 2: # can do this smarter?
-			# if background is really hight dont consider this region
-			self.fold_enrichment = 0
+	def calc_fold_enrichment(self):
+		# normalize by median score count in 4 kbp window around peak summit
+		cov_norm_factor = self.median_score_ip / self.median_score_control
+		# if background is abnormaly low use local score median for fold enrichment calculation
+		if self.background < self.median_score_ip:
+			self.fold_enrichment = (self.score - self.background * cov_norm_factor) / self.median_score_ip
+		# else use median normalized background at exactly the same position in control sample
 		else:
-			self.fold_enrichment = (self.score - self.background) / avg_tag_density
-		
-	def get_score(self):
-		# return tag score
-		return self.fold_enrichment * self.dist_score
-		
+			self.fold_enrichment = self.score / (self.background * cov_norm_factor)
+	
 	def determine_tag_distribution(self, filter_width):
 		# return smoothed frequency distribution position of tags
 		# normalize tags for position
@@ -358,35 +377,30 @@ class Peak:
 		for i in minus_tags:
 			minus_dist[i] += 1
 		# use a flat moving window to improve S/N ratio
-		window=ones(filter_width,'d')
+		win=ones(filter_width,'d')
 		# smooth by convolution of the singal with the window
-		self.plus_freq_dist = list(convolve(window/window.sum(), plus_dist, mode='same'))
-		self.minus_freq_dist = list(convolve(window/window.sum(), minus_dist, mode='same'))
+		self.plus_freq_dist = list(convolve(win/win.sum(), plus_dist, mode='same'))
+		self.minus_freq_dist = list(convolve(win/win.sum(), minus_dist, mode='same'))
 		# normalize distribution height
 		norm_factor = (sum(self.plus_freq_dist) + sum(self.minus_freq_dist)) / self.size
 		for i in range(self.size):
 			self.plus_freq_dist[i] = self.plus_freq_dist[i]/norm_factor
 			self.minus_freq_dist[i] = self.minus_freq_dist[i]/norm_factor
-		
+
 	def calc_distribution_score(self, plus_model, minus_model):
-		# calculate the percentage of similarity between tag dist and model
-		overlaps = []
-		for i in range(len(plus_model)):
-			peak_freq = self.plus_freq_dist[i]
-			model_freq = plus_model[i]
-			overlap = 1 - (fabs(model_freq - peak_freq)/(model_freq + peak_freq))
-			overlaps.append(overlap)
-		self.plus_dist_score = sum(overlaps) / len(overlaps)
+		# concatenate plus and minus distributions and models for testing
+		model = n_array(plus_model + minus_model)
+		freq_dist = self.plus_freq_dist + self.minus_freq_dist
+		# dist score is the p-value returned by the chi-square test
+		self.dist_score = chisquare(freq_dist, model)[1]
 		
-		overlaps = []
-		for i in range(len(minus_model)):
-			peak_freq = self.minus_freq_dist[i]
-			model_freq = minus_model[i]
-			overlap = 1 - (fabs(model_freq - peak_freq)/(model_freq + peak_freq))
-			overlaps.append(overlap)
-		self.minus_dist_score = sum(overlaps) / len(overlaps)
+	def get_score(self):
+		# final score is fold enrichment times goodness of fit to model
+		return self.fold_enrichment * self.dist_score
 		
-		self.dist_score = (self.plus_dist_score + self.minus_dist_score) / 2
+
+		
+
 
 class PeakContainer:
 	# a class to identify and classify potential peaks
@@ -411,6 +425,7 @@ class PeakContainer:
 		# perform main peak finding tasks
 		for chrom in self.ip_tags.get_chrom_names():
 			self.find_peaks(chrom)
+			self.measure_local_median(chrom)
 			self.measure_background(chrom)
 			self.determine_fold_enrichment(chrom)
 
@@ -517,15 +532,87 @@ class PeakContainer:
 			# calculate normalized background level
 			# add position to region if over threshold
 			self.position = peak.position
-			background = self.calculate_score()
-			nrom_background = background * self.cov_coefficient
-			peak.background = nrom_background
+			peak.background = self.calculate_score()
+		
+	def measure_local_median(self, chrom):
+		plus_tags = deque(self.ip_tags.get_tags(chrom, '+'))
+		minus_tags = deque(self.ip_tags.get_tags(chrom, '-'))
+		local_plus_tags = deque([])
+		local_minus_tags = deque([])
+		for peak in self.peaks[chrom]:
+			# fill windows
+			while plus_tags and plus_tags[0] <= (peak.position + 2000):
+				local_plus_tags.append(plus_tags.popleft())
+			while minus_tags and minus_tags[0] <= (peak.position + 2000):
+				local_minus_tags.append(minus_tags.popleft())
+			# get rid of old tags not fitting in the window any more
+			while local_plus_tags  and local_plus_tags [0] < (peak.position - 2000):
+				local_plus_tags .popleft()
+			while local_minus_tags and local_minus_tags[0] < (peak.position - 2000):
+				local_minus_tags.popleft()
+			# calculate normalized background level
+			# add position to region if over threshold
+			peak.plus_reg_tags_ip = len(local_plus_tags) + len(local_minus_tags)
+			peak.median_score_ip = self.get_median(copy(local_plus_tags), copy(local_minus_tags), peak.position)
+			
+
+		plus_tags = deque(self.control_tags.get_tags(chrom, '+'))
+		minus_tags = deque(self.control_tags.get_tags(chrom, '-'))
+		local_plus_tags = deque([])
+		local_minus_tags = deque([])
+		for peak in self.peaks[chrom]:
+			# fill windows
+			while plus_tags and plus_tags[0] <= (peak.position + 2000):
+				local_plus_tags.append(plus_tags.popleft())
+			while minus_tags and minus_tags[0] <= (peak.position + 2000):
+				local_minus_tags.append(minus_tags.popleft())
+			# get rid of old tags not fitting in the window any more
+			while local_plus_tags  and local_plus_tags [0] < (peak.position - 2000):
+				local_plus_tags .popleft()
+			while local_minus_tags and local_minus_tags[0] < (peak.position - 2000):
+				local_minus_tags.popleft()
+			# calculate normalized background level
+			# add position to region if over threshold
+			peak.plus_reg_tags_control = len(local_plus_tags) + len(local_minus_tags)
+			peak.median_score_control = self.get_median(copy(local_plus_tags), copy(local_minus_tags), peak.position)
+			
+		
 	
+	def get_median(self, plus_tags, minus_tags, peak_position):
+		score_list = []
+		self.plus_window = deque([])
+		self.minus_window = deque([])
+		self.position = peak_position - 2000 + self.peak_shift
+		region_end = peak_position + 2000 - self.peak_shift
+		while self.position <= region_end:
+			# fill windows
+			while plus_tags and plus_tags[0] <= (self.position + self.peak_shift):
+				self.plus_window.append(plus_tags.popleft())
+			while minus_tags and minus_tags[0] <= (self.position + self.peak_shift):
+				self.minus_window.append(minus_tags.popleft())
+			# get rid of old tags not fitting in the window any more
+			while self.plus_window and self.plus_window[0] < (self.position - self.peak_shift):
+				self.plus_window.popleft()
+			while self.minus_window and self.minus_window[0] < (self.position - self.peak_shift):
+				self.minus_window.popleft()
+			# add position to region if over threshold
+			score = self.calculate_score()
+			if score > 0:
+				# dont include region that is not mappable
+				score_list.append(score)
+			self.position += 10
+		score_median = median(score_list)
+		# if no tags are in the region at all just return 1 as median score
+		if score_median > 0:
+			return score_median
+		else:
+			return 1
+
 	def determine_fold_enrichment(self, chrom):
 		# for evey peak calculate fold enrichment
 		for chrom in self.peaks.keys():
 			for peak in self.peaks[chrom]:
-				peak.calc_fold_enrichment(self.tag_threshold, self.avg_tag_density)
+				peak.calc_fold_enrichment()
 	
 	def model_tag_distribution(self):
 		# pick top 200 peak positions and build model
@@ -588,7 +675,7 @@ class PeakContainer:
 
 	def write_to_stdout(self, options):
 		# write results to stdout
-		sys.stdout.write('Chromosome\tStart\tEnd\tName\tSummit\tScore\tFoldEnrichmen\tDistributionScore\tFDR\n')
+		sys.stdout.write('Chromosome\tStart\tEnd\tName\tSummit\tScore\tRawScore\tLocalScoreMedian\tLocalScoreMedianBg\tBackground\tFoldEnrichment\tDistributionScore\tFDR\n')
 		peak_count = 0
 		for chrom in sorted(self.peaks.keys()):
 			for peak in self.peaks[chrom]:
@@ -599,17 +686,22 @@ class PeakContainer:
 					end = summit + self.peak_shift
 					name = chrom + '_Peak_' + str(peak_count)
 					score = peak.get_score()
+					raw_score = peak.score
+					loc_med_score = peak.median_score_ip
+					loc_med_bg_score = peak.median_score_control
+					background = peak.background
 					enrichment = peak.fold_enrichment
 					dist_score = peak.dist_score
 					fdr = peak.fdr
-					output = (chrom, start, end, name, summit, score, enrichment, dist_score, fdr)
-					sys.stdout.write('%s\t%d\t%d\t%s\t%d\t%.2f\t%.2f\t%.2f\t%.2f\n' % output)
+					output = (chrom, start, end, name, summit, score, raw_score, loc_med_score, loc_med_bg_score, background, enrichment, dist_score, fdr)
+					sys.stdout.write('%s\t%d\t%d\t%s\t%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % output)
 		print_status('%d peaks detected at FDR %.1f%% \n' % (peak_count, options.fdr), options.verbose)
 	
-	def write_artifact_peaks(self):
-	# write peaks found in input to file
-		f = open('peak_in_input.tsv', 'w')
-		f.write('Chromosome\tStart\tEnd\tName\tSummit\tScore\tFoldEnrichmen\tDistributionScore\n')
+	def write_artifact_peaks(self, control_file_name):
+		# write peaks found in input to file
+		filename = control_file_name[:-4] + '_peaks.tsv'
+		f = open(filename, 'w')
+		f.write('Chromosome\tStart\tEnd\tName\tSummit\tScore\tRawScore\tLocalScoreMedian\tLocalScoreMedianBg\tBackground\tFoldEnrichment\tDistributionScore\n')
 		f.close()
 		peak_count = 0
 		for chrom in sorted(self.peaks.keys()):
@@ -621,11 +713,15 @@ class PeakContainer:
 					end = summit + self.peak_shift
 					name = chrom + '_Peak_' + str(peak_count)
 					score = peak.get_score()
+					raw_score = peak.score
+					loc_med_score = peak.median_score_ip
+					loc_med_bg_score = peak.median_score_control
+					background = peak.background
 					enrichment = peak.fold_enrichment
 					dist_score = peak.dist_score
-					output = (chrom, start, end, name, summit, score, enrichment, dist_score)
-					f = open('peak_in_input.tsv', 'a')
-					f.write('%s\t%d\t%d\t%s\t%d\t%.2f\t%.2f\t%.2f\n' % output)
+					output = (chrom, start, end, name, summit, score, raw_score, loc_med_score, loc_med_bg_score, background, enrichment, dist_score)
+					f = open(filename, 'a')
+					f.write('%s\t%d\t%d\t%s\t%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % output)
 					f.close()
 	
 if __name__ == '__main__':
