@@ -17,12 +17,11 @@ import sys
 import csv
 import os
 from cPickle import dump
-from operator import add, mul
+from operator import add
 from time import strftime, localtime
 from collections import deque
 from array import array
 from optparse import OptionParser
-from math import fabs, isnan
 from scipy.stats import chisquare
 from copy import copy
 
