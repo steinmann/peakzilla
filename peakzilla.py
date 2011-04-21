@@ -47,6 +47,10 @@ def main():
 	type = "float", dest="fdr", default='1',\
 	help = "cutoff for the estimated FDR value: default = 1")
 	
+	parser.add_option("-c", "--score_cutoff",\
+	type = "float", dest="score_cutoff", default='2',\
+	help = "minimum cutoff for score (~ fold enrichment): default = 2")
+	
 	parser.add_option("-q", "--quiet",\
 	action = "store_false", dest="verbose", default=True,\
 	help = "don't print status messages")
@@ -678,13 +682,13 @@ class PeakContainer:
 		peak_count = 0
 		for chrom in sorted(self.peaks.keys()):
 			for peak in self.peaks[chrom]:
-				if peak.fdr <= options.fdr:
+				score = peak.get_score()
+				if peak.fdr <= options.fdr and score >= options.score_cutoff:
 					peak_count += 1
 					summit = peak.position
 					start = summit - self.peak_shift
 					end = summit + self.peak_shift
 					name = chrom + '_Peak_' + str(peak_count)
-					score = peak.get_score()
 					raw_score = peak.score
 					loc_med_score = peak.median_score_ip
 					loc_med_bg_score = peak.median_score_control
