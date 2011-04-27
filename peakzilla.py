@@ -433,11 +433,15 @@ class PeakContainer:
 			self.determine_fold_enrichment(chrom)
 
 	def calculate_score(self):
+		# calculate score
 		score = 0
+		correct = -self.position + self.peak_shift
+		plus = self.plus_model
+		minus = self.minus_model
 		for tag in self.plus_window:
-			score += self.plus_model[tag - self.position + self.peak_shift]
+			score += plus[tag - correct]
 		for tag in self.minus_window:
-			score += self.minus_model[tag - self.position + self.peak_shift]
+			score += minus[tag - correct]
 		return score
 	
 	def find_peaks(self, chrom):
