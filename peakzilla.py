@@ -435,7 +435,7 @@ class PeakContainer:
 	def calculate_score(self):
 		# calculate score
 		score = 0
-		correct = -self.position + self.peak_shift
+		correct = self.peak_shift - self.position
 		plus = self.plus_model
 		minus = self.minus_model
 		for tag in self.plus_window:
