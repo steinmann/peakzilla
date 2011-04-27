@@ -702,7 +702,7 @@ class PeakContainer:
 					fdr = peak.fdr
 					output = (chrom, start, end, name, summit, score, raw_score, loc_med_score, loc_med_bg_score, background, enrichment, dist_score, fdr)
 					sys.stdout.write('%s\t%d\t%d\t%s\t%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % output)
-		print_status('%d peaks detected at FDR %.1f%% \n' % (peak_count, options.fdr), options.verbose)
+		print_status('%d peaks detected at FDR %.1f%%' % (peak_count, options.fdr), options.verbose)
 	
 	def write_artifact_peaks(self, control_file_name):
 		# write peaks found in input to file
