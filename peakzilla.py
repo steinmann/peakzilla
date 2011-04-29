@@ -432,16 +432,22 @@ class PeakContainer:
 			self.measure_background(chrom)
 			self.determine_fold_enrichment(chrom)
 
+	def determine_median_score(chrom):
+		# determine the median score for sample and chromosome
+		score_list = []
+		median_score = median(score_list)
+		return median_score
+
 	def calculate_score(self):
 		# calculate score
 		score = 0
-		correct = self.peak_shift - self.position
+		tag_shift = self.peak_shift - self.position
 		plus = self.plus_model
 		minus = self.minus_model
 		for tag in self.plus_window:
-			score += plus[tag - correct]
+			score += plus[tag + tag_shift]
 		for tag in self.minus_window:
-			score += minus[tag - correct]
+			score += minus[tag + tag_shift]
 		return score
 	
 	def find_peaks(self, chrom):
