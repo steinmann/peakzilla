@@ -39,10 +39,6 @@ def main():
 	type = "float", dest="model_threshold", default="120",\
 	help = "fold enrichment threshold for modeling: default=120")
 	
-	parser.add_option("-t", "--peak_threshold",\
-	type = "float", dest="peak_threshold", default="40",\
-	help = "fold enrichment threshold for peak finding: default=40")
-	
 	parser.add_option("-f", "--fdr",\
 	type = "float", dest="fdr", default='1',\
 	help = "cutoff for the estimated FDR value: default = 1")
@@ -92,26 +88,10 @@ def main():
 	print_status('Used best %d peaks for modeling ...' % peak_model.peaks_incorporated, options.verbose)
 	print_status('Peak size is %d bp' % peak_model.peak_size, options.verbose)
 	print_status('Peak size SD is %d bp' % peak_model.peak_size_std, options.verbose)
-			
-	# first attempt to find candidate peaks in control sample
-	print_status('Finding potential false positives ...', options.verbose)
-	control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, options.peak_threshold, peak_model.plus_model, peak_model.minus_model)
 	
-	# change peak threshold until it yields a reasonable number of peaks
-	while control_peaks.peak_count < 2000 or control_peaks.peak_count > 10000:
-		if control_peaks.peak_count < 2000:
-			options.peak_threshold = options.peak_threshold / 2
-			print_status('Peak threshold was set too high, trying: %.2f'  % options.peak_threshold, options.verbose)
-			control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, options.peak_threshold, peak_model.plus_model, peak_model.minus_model)
-		else:
-			options.peak_threshold = options.peak_threshold * 1.25
-			print_status('Peak threshold was set too low, trying: %.2f' % options.peak_threshold, options.verbose)
-			control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, options.peak_threshold, peak_model.plus_model, peak_model.minus_model)
-	print_status('%d potential false positives found' % control_peaks.peak_count, options.verbose)
-	
-	# find candidate peaks in IP sample
-	print_status('Finding peak candidates ...', options.verbose)
-	ip_peaks = PeakContainer(ip_tags, control_tags, peak_model.peak_size, options.peak_threshold, peak_model.plus_model, peak_model.minus_model)
+	# find peaks for modeling
+	print_status('Finding peaks for modeling ...', options.verbose)
+	ip_peaks = PeakContainer(ip_tags, control_tags, peak_model.peak_size, peak_model.plus_model, peak_model.minus_model)
 	print_status('%d candidate peaks found' % ip_peaks.peak_count, options.verbose)
 	
 	# model tag distribution 
@@ -128,10 +108,10 @@ def main():
 
 	# find peaks using emirical model
 	print_status('Finding peaks with empirical peak model ...', options.verbose)
-	control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, options.peak_threshold, plus_model, minus_model)
-	print_status('%d potential false positives found' % control_peaks.peak_count, options.verbose)
-	ip_peaks = PeakContainer(ip_tags, control_tags, peak_model.peak_size, options.peak_threshold, plus_model, minus_model)
+	ip_peaks = PeakContainer(ip_tags, control_tags, peak_model.peak_size, plus_model, minus_model)
 	print_status('%d candidate peaks found' % ip_peaks.peak_count, options.verbose)
+	control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, plus_model, minus_model)
+	print_status('%d potential false positives found' % control_peaks.peak_count, options.verbose)
 	
 	# calculate distribution scores
 	print_status('Calculating tag distribution scores ...', options.verbose)
@@ -400,21 +380,15 @@ class Peak:
 	def get_score(self):
 		# final score is fold enrichment times goodness of fit to model
 		return self.fold_enrichment * self.dist_score
-		
-
-		
-
 
 class PeakContainer:
 	# a class to identify and classify potential peaks
-	def __init__(self, ip_tags, control_tags, peak_size, fold_threshold, plus_model, minus_model):
+	def __init__(self, ip_tags, control_tags, peak_size, plus_model, minus_model):
 		self.ip_tags = ip_tags
 		self.control_tags = control_tags
 		self.peak_size = peak_size
 		self.peak_shift = (peak_size - 1) / 2
-		self.tag_threshold = ip_tags.tag_number / float(ip_tags.genome_size()) * peak_size * fold_threshold
-		self.avg_tag_density = ip_tags.tag_number / float(ip_tags.genome_size()) * peak_size
-		self.cov_coefficient = ip_tags.tag_number / float(control_tags.tag_number)
+		self.score_threshold = None
 		self.plus_model = plus_model
 		self.minus_model = minus_model
 		self.peaks = {}
@@ -427,16 +401,42 @@ class PeakContainer:
 	def build(self):
 		# perform main peak finding tasks
 		for chrom in self.ip_tags.get_chrom_names():
+			self.score_threshold = self.determine_median_score(chrom) * 2
 			self.find_peaks(chrom)
 			self.measure_local_median(chrom)
 			self.measure_background(chrom)
 			self.determine_fold_enrichment(chrom)
 
-	def determine_median_score(chrom):
-		# determine the median score for sample and chromosome
+	def determine_median_score(self, chrom):
+		# determine the median score in the first ~100 kbp of the chromosome
 		score_list = []
-		median_score = median(score_list)
-		return median_score
+		# convert tag arrays to deque for fast appending and popping
+		plus_tags = deque(self.ip_tags.get_tags(chrom, '+'))
+		minus_tags = deque(self.ip_tags.get_tags(chrom, '-'))
+		self.plus_window = deque([])
+		self.minus_window = deque([])
+		self.position = 0
+		while plus_tags and minus_tags:
+			# fill windows
+			while plus_tags and plus_tags[0] <= (self.position + self.peak_shift):
+				self.plus_window.append(plus_tags.popleft())
+			while minus_tags and minus_tags[0] <= (self.position + self.peak_shift):
+				self.minus_window.append(minus_tags.popleft())
+			# get rid of old tags not fitting in the window any more
+			while self.plus_window and self.plus_window[0] < (self.position - self.peak_shift):
+				self.plus_window.popleft()
+			while self.minus_window and self.minus_window[0] < (self.position - self.peak_shift):
+				self.minus_window.popleft()
+			# add score to list if its > 0
+			score = self.calculate_score()
+			if score > 0:
+				score_list.append(score)
+			# after sampling 1000 positions return median score
+			if len(score_list) == 1000:
+				return median(score_list)
+			self.position += 100
+		# if sampling 1000 positions was not possible just return median of current sampling
+		return median(score_list)
 
 	def calculate_score(self):
 		# calculate score
@@ -476,7 +476,7 @@ class PeakContainer:
 				self.minus_window.popleft()
 			# add position to region if over threshold
 			score = self.calculate_score()
-			if score > self.tag_threshold:
+			if score > self.score_threshold:
 				# save all scores in buffer
 				score_buffer.append(score)
 				# get rid of old scores that are outside of the filter
