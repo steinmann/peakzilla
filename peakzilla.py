@@ -21,16 +21,13 @@ from copy import copy
 # imports from numpy
 try:
 	from numpy import median, convolve, ones, std, array as n_array
-
 except ImportError:
 	sys.stderr.write("Failed to import from numpy, please install numpy!\n")
 	sys.exit(1)
 
-
 # imports from scipy
 try:
 	from scipy.stats import chisquare
-
 except ImportError:
 	sys.stderr.write("Failed to import from scipy, please install scipy!\n")
 	sys.exit(1)
