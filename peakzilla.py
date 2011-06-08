@@ -305,7 +305,7 @@ class PeakShiftModel:
 				minus_peak = minus_peaks[0]
 				if minus_peak > plus_peak:
 					peak_shift = minus_peak - plus_peak
-					if peak_shift < self.window_size * 2:
+					if peak_shift < self.window_size * 2 and peak_shift > self.window_size / 4 :
 						# only append if in agreement with max fragment size
 						self.peak_shifts.append(peak_shift)
 						self.peaks_incorporated += 1
@@ -388,7 +388,7 @@ class PeakContainer:
 		self.control_tags = control_tags
 		self.peak_size = peak_size
 		self.peak_shift = (peak_size - 1) / 2
-		self.score_threshold = None
+		self.score_threshold = 10
 		self.plus_model = plus_model
 		self.minus_model = minus_model
 		self.peaks = {}
@@ -400,43 +400,11 @@ class PeakContainer:
 
 	def build(self):
 		# perform main peak finding tasks
-		for chrom in self.ip_tags.get_chrom_names():
-			self.score_threshold = self.determine_median_score(chrom) * 2
+		for chrom in self.ip_tags.get_chrom_names():	
 			self.find_peaks(chrom)
 			self.measure_local_median(chrom)
 			self.measure_background(chrom)
 			self.determine_fold_enrichment(chrom)
-
-	def determine_median_score(self, chrom):
-		# determine the median score in the first ~100 kbp of the chromosome
-		score_list = []
-		# convert tag arrays to deque for fast appending and popping
-		plus_tags = deque(self.ip_tags.get_tags(chrom, '+'))
-		minus_tags = deque(self.ip_tags.get_tags(chrom, '-'))
-		self.plus_window = deque([])
-		self.minus_window = deque([])
-		self.position = 0
-		while plus_tags and minus_tags:
-			# fill windows
-			while plus_tags and plus_tags[0] <= (self.position + self.peak_shift):
-				self.plus_window.append(plus_tags.popleft())
-			while minus_tags and minus_tags[0] <= (self.position + self.peak_shift):
-				self.minus_window.append(minus_tags.popleft())
-			# get rid of old tags not fitting in the window any more
-			while self.plus_window and self.plus_window[0] < (self.position - self.peak_shift):
-				self.plus_window.popleft()
-			while self.minus_window and self.minus_window[0] < (self.position - self.peak_shift):
-				self.minus_window.popleft()
-			# add score to list if its > 0
-			score = self.calculate_score()
-			if score > 0:
-				score_list.append(score)
-			# after sampling 1000 positions return median score
-			if len(score_list) == 1000:
-				return median(score_list)
-			self.position += 100
-		# if sampling 1000 positions was not possible just return median of current sampling
-		return median(score_list)
 
 	def calculate_score(self):
 		# calculate score
@@ -474,6 +442,9 @@ class PeakContainer:
 				self.plus_window.popleft()
 			while self.minus_window and self.minus_window[0] < (self.position - self.peak_shift):
 				self.minus_window.popleft()
+			# if number of candidates found is high readjust threshold
+			if self.peak_count > 25000:
+				self.adjust_threshold()
 			# add position to region if over threshold
 			score = self.calculate_score()
 			if score > self.score_threshold:
@@ -517,6 +488,22 @@ class PeakContainer:
 				if plus_tags and minus_tags:
 					distance_to_next = plus_tags[0] - self.position + 1
 				self.position += distance_to_next
+
+	def adjust_threshold(self):
+		# find the 20000th score
+		peak_scores = []
+		for chrom in self.peaks.keys():
+			for peak in self.peaks[chrom]:
+				peak_scores.append(peak.score)
+		# set score to 20000th
+		self.score_threshold = sorted(peak_scores)[-20000]
+		# remove peaks below threshold
+		for chrom in self.peaks.keys():
+			self.peaks[chrom] = [peak for peak in self.peaks[chrom] if peak.score >= self.score_threshold]
+		# recount peaks
+		self.peak_count = 0
+		for chrom in self.peaks.keys():
+			self.peak_count += len(self.peaks[chrom])
 
 	def add_peak(self, peak, chrom):
 		# calculate tag distribution frequency and add peak to container
@@ -589,8 +576,6 @@ class PeakContainer:
 			peak.plus_reg_tags_control = len(local_plus_tags) + len(local_minus_tags)
 			peak.median_score_control = self.get_median(copy(local_plus_tags), copy(local_minus_tags), peak.position)
 			
-		
-	
 	def get_median(self, plus_tags, minus_tags, peak_position):
 		score_list = []
 		self.plus_window = deque([])
