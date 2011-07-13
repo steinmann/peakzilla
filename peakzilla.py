@@ -688,6 +688,8 @@ class PeakContainer:
 					peak_count += 1
 					summit = peak.position
 					start = summit - self.peak_shift
+					if start < 0:
+						start = 0
 					end = summit + self.peak_shift
 					name = chrom + '_Peak_' + str(peak_count)
 					raw_score = peak.score
@@ -714,6 +716,8 @@ class PeakContainer:
 					peak_count += 1
 					summit = peak.position
 					start = summit - self.peak_shift
+					if start < 0:
+						start = 0
 					end = summit + self.peak_shift
 					name = chrom + '_Peak_' + str(peak_count)
 					score = peak.get_score()
