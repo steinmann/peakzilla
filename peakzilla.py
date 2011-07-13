@@ -378,8 +378,8 @@ class Peak:
 
 	def calc_distribution_score(self, plus_model, minus_model):
 		# concatenate plus and minus distributions and models for testing
-		model = n_array(plus_model + minus_model)
-		freq_dist = self.plus_freq_dist + self.minus_freq_dist
+		model = n_array(plus_model[:self.shift] + minus_model[-self.shift:])
+		freq_dist = self.plus_freq_dist[:self.shift] + self.minus_freq_dist[-self.shift:]
 		# dist score is the p-value returned by the chi-square test
 		self.dist_score = chisquare(freq_dist, model)[1]
 		
