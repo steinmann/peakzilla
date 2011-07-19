@@ -106,9 +106,11 @@ def main():
 	minus_model = ip_peaks.model_tag_distribution()[1]
 	
 	# plot model using R
+	print_status('Plotting the model ...', options.verbose)
 	create_model_plot(plus_model, minus_model, ip)
 	
 	# serialize model
+	print_status('Serializing the model for later use ...', options.verbose)
 	filename = ip[:-4] + '_model.pkl'
 	dump((plus_model, minus_model), open(filename, 'w'))
 
@@ -116,6 +118,9 @@ def main():
 	print_status('Finding peaks with empirical peak model ...', options.verbose)
 	ip_peaks = PeakContainer(ip_tags, control_tags, peak_model.peak_size, plus_model, minus_model)
 	print_status('%d candidate peaks found' % ip_peaks.peak_count, options.verbose)
+	
+	# find peaks using emirical model in control sample
+	print_status('Finding peaks in control sample ...', options.verbose)
 	control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, plus_model, minus_model)
 	print_status('%d potential false positives found' % control_peaks.peak_count, options.verbose)
 	
@@ -311,7 +316,7 @@ class PeakShiftModel:
 				minus_peak = minus_peaks[0]
 				if minus_peak > plus_peak:
 					peak_shift = minus_peak - plus_peak
-					if peak_shift < self.window_size * 2 and peak_shift > self.window_size / 4 :
+					if peak_shift < self.window_size * 2 and peak_shift > self.window_size / 2 :
 						# only append if in agreement with max fragment size
 						self.peak_shifts.append(peak_shift)
 						self.peaks_incorporated += 1
