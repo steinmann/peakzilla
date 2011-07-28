@@ -1,12 +1,11 @@
 #!/usr/bin/env python
 
-# Copyright (c) Jonas Steinmann, 2011
+# Copyright (c) Jonas Steinmann, 2010-2011
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License version 3 as 
 # published by the Free Software Foundation.
 
-# imports from standard library
 import sys
 import csv
 import os
@@ -17,20 +16,7 @@ from collections import deque
 from array import array
 from optparse import OptionParser
 from copy import copy
-
-# imports from numpy
-try:
-	from numpy import median, convolve, ones, std, array as n_array
-except ImportError:
-	sys.stderr.write("Failed to import from numpy, please install numpy!\n")
-	sys.exit(1)
-
-# imports from scipy
-try:
-	from scipy.stats import chisquare
-except ImportError:
-	sys.stderr.write("Failed to import from scipy, please install scipy!\n")
-	sys.exit(1)
+from math import exp, sqrt, pi
 
 def main():
 	# option parser
@@ -93,12 +79,10 @@ def main():
 			peak_model = PeakShiftModel(ip_tags, options.fragment_size, options.model_threshold)
 	print_status('Used best %d peaks for modeling ...' % peak_model.peaks_incorporated, options.verbose)
 	print_status('Peak size is %d bp' % peak_model.peak_size, options.verbose)
-	print_status('Peak size SD is %d bp' % peak_model.peak_size_std, options.verbose)
 	
 	# find peaks for modeling
 	print_status('Finding peaks for modeling ...', options.verbose)
 	ip_peaks = PeakContainer(ip_tags, control_tags, peak_model.peak_size, peak_model.plus_model, peak_model.minus_model)
-	print_status('%d candidate peaks found' % ip_peaks.peak_count, options.verbose)
 	
 	# model tag distribution 
 	print_status('Modeling tag distribution ...', options.verbose)
@@ -117,12 +101,10 @@ def main():
 	# find peaks using emirical model
 	print_status('Finding peaks with empirical peak model ...', options.verbose)
 	ip_peaks = PeakContainer(ip_tags, control_tags, peak_model.peak_size, plus_model, minus_model)
-	print_status('%d candidate peaks found' % ip_peaks.peak_count, options.verbose)
 	
 	# find peaks using emirical model in control sample
 	print_status('Finding peaks in control sample ...', options.verbose)
 	control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, plus_model, minus_model)
-	print_status('%d potential false positives found' % control_peaks.peak_count, options.verbose)
 	
 	# calculate distribution scores
 	print_status('Calculating tag distribution scores ...', options.verbose)
@@ -141,6 +123,7 @@ def main():
 	print_status('Writing input peaks to file ...', options.verbose)
 	control_peaks.write_artifact_peaks(control)
 	print_status('Done!', options.verbose)
+
 
 def create_model_plot(plus_model, minus_model, ip_file_name):
 	# output model in an R friendly fashion
@@ -162,15 +145,76 @@ def create_model_plot(plus_model, minus_model, ip_file_name):
 		try:
 			os.system('R --slave < %s > /dev/null' % filename)
 		except:
-			print_status('You might want to install R ...', True)
-			
-	
+			print_status('No plot created, need to install R for that!', True)
+
+
 def print_status(string, boolean):
 	# switchable printing to stderror
 	if boolean:
 		sys.stderr.write('%s %s\n' % (strftime("%H:%M:%S", localtime()), string))
 
+
+def chisquare(f_obs, f_exp):
+	# calculates a one-way chi-square for observed versus exprected frequencies
+	chisq = 0
+	df = len(f_obs)-1
+	for i in range(len(f_obs)):
+		chisq = chisq + (f_obs[i]-f_exp[i]) ** 2 / float(f_exp[i])
+	# return chi-sqare value and associated p-value for f_obs == f_exp
+	return chisq, chisqprob(chisq, df)
+
+
+def chisqprob(chisq, df):
+	# returns chisquare probability (works only for high degrees of freedom)
+	if df < 30:
+		raise ValueError('Function does not work for df < 30!')
+	if chisq < 15:
+		return 1.0
+	a = 0.5 * chisq
+	y = exp(-a)
+	chisq = 0.5 * (df - 1.0)
+	if df % 2 == 0:
+		e = 1.0
+		z = 1.0
+	else:
+		e = 1.0 / sqrt(pi) / sqrt(a)
+		z = 0.5
+	c = 0.0
+	while (z <= chisq):
+		e = e * (a/float(z))
+		c = c + e
+		z = z + 1.0
+	return (c*y)
+
+
+def median(numlist):
+	# calculate median
+    s = sorted(numlist)
+    l = len(numlist)
+    if l == 0:
+		return float('nan')
+    if l%2 == 0:
+        return (s[l/2] + s[l/2-1]) / 2.0
+    else:
+        return float(s[l/2])
+
+
+def convolve(signal, filter_width):
+	# smooth signal with a flat scanning window of filter_width
+	filter_width = float(filter_width)
+	overhang = int((filter_width-1) / 2)
+	window = deque([])
+	result = []
+	for i in signal + overhang * [0]:
+		window.append(i)
+		while len(window) > filter_width:
+			window.popleft()
+		result.append(sum(window)/ filter_width)
+	return result[overhang:]
+
+
 class TagContainer:
+
 	# class for loading, storing and manipulating sequence tags
 	def __init__(self):
 		# intitialize an empty object
@@ -188,7 +232,7 @@ class TagContainer:
 		# add tag to dictionary
 		if not chrom in self.tags:
 			self.tags[chrom] = {}
-			# store tags in an array of unsigned integers (4 bytes)
+			# store tags as an array of unsigned integers (4 bytes)
 			self.tags[chrom]['+'] = array('i',[])
 			self.tags[chrom]['-'] = array('i',[])
 			self.tags[chrom][strand].append(fiveprime)
@@ -283,7 +327,6 @@ class PeakShiftModel:
 			self.peak_size = self.peak_shift * 2 + 1
 			self.plus_model = [1] * self.peak_shift  + [0] * (self.peak_shift + 1)
 			self.minus_model = [0] * (self.peak_shift + 1) + [1] * self.peak_shift
-			self.peak_size_std = std([shift * 2 + 1 for shift in self.peak_shifts])
 
 	def find_simple_peaks(self, chrom, strand):
 		# return maxima of tag counts in regions with more tags than threshold
@@ -371,10 +414,9 @@ class Peak:
 		for i in minus_tags:
 			minus_dist[i] += 1
 		# use a flat moving window to improve S/N ratio
-		win=ones(filter_width,'d')
 		# smooth by convolution of the singal with the window
-		self.plus_freq_dist = list(convolve(win/win.sum(), plus_dist, mode='same'))
-		self.minus_freq_dist = list(convolve(win/win.sum(), minus_dist, mode='same'))
+		self.plus_freq_dist = convolve(plus_dist, filter_width)
+		self.minus_freq_dist = convolve(minus_dist, filter_width)
 		# normalize distribution height
 		norm_factor = (sum(self.plus_freq_dist) + sum(self.minus_freq_dist)) / self.size
 		for i in range(self.size):
@@ -383,7 +425,7 @@ class Peak:
 
 	def calc_distribution_score(self, plus_model, minus_model):
 		# concatenate plus and minus distributions and models for testing
-		model = n_array(plus_model[:self.shift] + minus_model[-self.shift:])
+		model = plus_model[:self.shift] + minus_model[-self.shift:]
 		freq_dist = self.plus_freq_dist[:self.shift] + self.minus_freq_dist[-self.shift:]
 		# dist score is the p-value returned by the chi-square test
 		self.dist_score = chisquare(freq_dist, model)[1]
@@ -391,6 +433,7 @@ class Peak:
 	def get_score(self):
 		# final score is fold enrichment times goodness of fit to model
 		return self.fold_enrichment * self.dist_score
+
 
 class PeakContainer:
 	# a class to identify and classify potential peaks
@@ -501,7 +544,8 @@ class PeakContainer:
 				self.position += distance_to_next
 
 	def adjust_threshold(self):
-		# find the 20000th score
+		# allows for dynamic adjustment of peak calling threshold
+		# restricts the number of candidate peaks to investigate to 20000
 		peak_scores = []
 		for chrom in self.peaks.keys():
 			for peak in self.peaks[chrom]:
@@ -546,6 +590,7 @@ class PeakContainer:
 			peak.background = self.calculate_score()
 		
 	def measure_local_median(self, chrom):
+		# measure median score arround a peak +/- 2000 bp for ip tags
 		plus_tags = deque(self.ip_tags.get_tags(chrom, '+'))
 		minus_tags = deque(self.ip_tags.get_tags(chrom, '-'))
 		local_plus_tags = deque([])
@@ -564,9 +609,8 @@ class PeakContainer:
 			# calculate normalized background level
 			# add position to region if over threshold
 			peak.plus_reg_tags_ip = len(local_plus_tags) + len(local_minus_tags)
-			peak.median_score_ip = self.get_median(copy(local_plus_tags), copy(local_minus_tags), peak.position)
-			
-
+			peak.median_score_ip = self.get_median(copy(local_plus_tags), copy(local_minus_tags), peak.position)	
+		# measure median score arround a peak +/- 2000 bp for control tags
 		plus_tags = deque(self.control_tags.get_tags(chrom, '+'))
 		minus_tags = deque(self.control_tags.get_tags(chrom, '-'))
 		local_plus_tags = deque([])
@@ -588,6 +632,7 @@ class PeakContainer:
 			peak.median_score_control = self.get_median(copy(local_plus_tags), copy(local_minus_tags), peak.position)
 			
 	def get_median(self, plus_tags, minus_tags, peak_position):
+		# calculate score every 10 bp and return median score
 		score_list = []
 		self.plus_window = deque([])
 		self.minus_window = deque([])
@@ -624,7 +669,7 @@ class PeakContainer:
 				peak.calc_fold_enrichment()
 	
 	def model_tag_distribution(self):
-		# pick top 200 peak positions and build model
+		# use tags from top 200 peaks to build the distribution model
 		ranked_peak_tags = []
 		for chrom in self.peaks.keys():
 			for peak in self.peaks[chrom]:
@@ -706,7 +751,7 @@ class PeakContainer:
 					fdr = peak.fdr
 					output = (chrom, start, end, name, summit, score, raw_score, loc_med_score, loc_med_bg_score, background, enrichment, dist_score, fdr)
 					sys.stdout.write('%s\t%d\t%d\t%s\t%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % output)
-		print_status('%d peaks detected at FDR %.1f%%' % (peak_count, options.fdr), options.verbose)
+		print_status('%d peaks detected at FDR %.1f%% and %.1f fold enrichment cutoff' % (peak_count, options.fdr, options.score_cutoff), options.verbose)
 	
 	def write_artifact_peaks(self, control_file_name):
 		# write peaks found in input to file
@@ -736,7 +781,8 @@ class PeakContainer:
 					f = open(filename, 'a')
 					f.write('%s\t%d\t%d\t%s\t%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % output)
 					f.close()
-	
+
+
 if __name__ == '__main__':
     try:
         main()
