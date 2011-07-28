@@ -1,24 +1,23 @@
-Usage:	python peakzilla.py [OPTIONS] chip.bed control.bed > results.tsv
+USAGE
+-----
+Usage: python peakzilla.py [OPTIONS] chip.bed control.bed > results.tsv
 
 Options:
   -h, --help            show this help message and exit
   -s FRAGMENT_SIZE, --fragment_size=FRAGMENT_SIZE
-                        fragment size in bp used to define the upper limit of
-                        peak size for modeling: default=200
-  -m MODEL_THRESHOLD, --model_threshold=MODEL_THRESHOLD
-                        fold enrichment threshold over average read density
-                        for building the peak model: default=120
-  -t PEAK_THRESHOLD, --peak_threshold=PEAK_THRESHOLD
-                        fold enrichment threshold over average read density
-                        for finding candidate peaks: default=40
+                        upper limit of fragment size in bp: default=200
   -f FDR, --fdr=FDR     cutoff for the estimated FDR value: default = 1
+  -c SCORE_CUTOFF, --score_cutoff=SCORE_CUTOFF
+                        minimum cutoff for score (~ fold enrichment): default
+                        = 2
   -q, --quiet           don't print status messages
 
 
 DEPENDENCIES
 ------------
 * Runs on OSX and Linux based operating systems.
-* Requires Python 2.5 or greater and NumPy.
+* Requires Python 2.5 or greater
+* For up to 5x better perormance use PyPy instrad of CPython
 
 
 INPUT FORMAT
@@ -53,10 +52,21 @@ python peakzilla.py chip.bed input.bed > chip_results.tsv
 
 OPTIONS
 -------
-Usage of the options should not be required! Reasonable values for
-MODEL_THRESHOLD and PEAK_THRESHOLD variable are found by the program.
-Setting them to a value previously found by a run on a similar dataset
-improves performance.
+One of peakzillas design goals is to learn all the needed information the
+data. Usage of the options should therefore not be required.
+
+FRAGMENT_SIZE
+How large or small the fragment size will be modled is loosely constrained
+by this parameter. As most protocols for ChIP sequencing involve selecting
+fragments of around 200 bp it is set to 200.
+
+FDR
+Cuttoff for accepted false discovery rate, as estimated from the control
+sample.
+
+SCORE_CUTOFF
+Minnimum fold enrichment over backgroundrequired for the peak to be
+printed to output.
 
 
 OUTPUT FORMAT
