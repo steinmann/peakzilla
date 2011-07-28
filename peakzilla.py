@@ -27,10 +27,6 @@ def main():
 	type = "int", dest="fragment_size", default="200",\
 	help = "upper limit of fragment size in bp: default=200")
 	
-	parser.add_option("-m", "--model_threshold",\
-	type = "float", dest="model_threshold", default="120",\
-	help = "fold enrichment threshold for modeling: default=120")
-	
 	parser.add_option("-f", "--fdr",\
 	type = "float", dest="fdr", default='1',\
 	help = "cutoff for the estimated FDR value: default = 1")
@@ -65,18 +61,19 @@ def main():
 
 	# first attempt of modeling peak size
 	print_status('Modeling peak size and shift ...', options.verbose)
-	peak_model = PeakShiftModel(ip_tags, options.fragment_size, options.model_threshold)
+	model_threshold = 120
+	peak_model = PeakShiftModel(ip_tags, options.fragment_size, model_threshold)
 	
 	# change model threshold until it yields a reasonable number of peaks
 	while peak_model.peaks_incorporated < 200 or peak_model.peaks_incorporated > 500:
 		if peak_model.peaks_incorporated < 500:
-			options.model_threshold = options.model_threshold / 2
-			print_status('Model threshold was set too high, trying: %.1f'  % options.model_threshold, options.verbose)
-			peak_model = PeakShiftModel(ip_tags, options.fragment_size, options.model_threshold)
+			model_threshold = model_threshold / 2
+			print_status('Model threshold was set too high, trying: %.1f'  % model_threshold, options.verbose)
+			peak_model = PeakShiftModel(ip_tags, options.fragment_size, model_threshold)
 		else:
-			options.model_threshold = options.model_threshold * 1.25
-			print_status('Model threshold was set too low, trying: %.1f' % options.model_threshold, options.verbose)
-			peak_model = PeakShiftModel(ip_tags, options.fragment_size, options.model_threshold)
+			model_threshold = model_threshold * 1.25
+			print_status('Model threshold was set too low, trying: %.1f' % model_threshold, options.verbose)
+			peak_model = PeakShiftModel(ip_tags, options.fragment_size, model_threshold)
 	print_status('Used best %d peaks for modeling ...' % peak_model.peaks_incorporated, options.verbose)
 	print_status('Peak size is %d bp' % peak_model.peak_size, options.verbose)
 	
