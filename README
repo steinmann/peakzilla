@@ -52,25 +52,25 @@ python peakzilla.py chip.bed input.bed > chip_results.tsv
 
 OPTIONS
 -------
-One of peakzilla's design goals is to learn all the needed information from
-the data. Usage of the options should therefore not be required.
+One of peakzilla's design goals is to learn all the necessary information
+from the data. The usage of the options should therefore not be required.
 
 FRAGMENT_SIZE
-How large or small the fragment size will be modled is loosely constrained
+How large or small the fragment size will be modeled is loosely constrained
 by this parameter. As most protocols for ChIP sequencing involve selecting
 fragments of around 200 bp it is set to 200.
 
 FDR
-Cuttoff for accepted false discovery rate, as estimated from the control
+Cutoff for accepted false discovery rate, as estimated from the control
 sample.
 
 SCORE_CUTOFF
-Minnimum fold enrichment over backgroundrequired for the peak to be
+Minnimum fold enrichment over background required for the peak to be
 printed to output.
 
 
 OUTPUT FORMAT
 -------------
-* Results are printed as a table of tab separated values to stdout.
+* Results are printed as a table of tab delimited values to stdout.
 * Status messages are printed to stderr. 
 
