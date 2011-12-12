@@ -45,15 +45,15 @@ def main():
 		# return help message if argment number is incorrect
 		parser.print_help()
 		sys.exit(0)
-	ip = args[0]
-	control = args[1]
+	ip_file = args[0]
+	control_file = args[1]
 	
 	# load tags
 	print_status('Loading tags ...', options.verbose)
 	ip_tags = TagContainer()
 	control_tags = TagContainer()
-	ip_tags(ip)
-	control_tags(control)
+	ip_tags(ip_file)
+	control_tags(control_file)
 	
 	# report tag number
 	print_status('Tags in IP: %d' % ip_tags.tag_number, options.verbose)
@@ -68,13 +68,10 @@ def main():
 	while peak_model.peaks_incorporated < 200 or peak_model.peaks_incorporated > 500:
 		if peak_model.peaks_incorporated < 500:
 			model_threshold = model_threshold / 2
-			print_status('Model threshold was set too high, trying: %.1f'  % model_threshold, options.verbose)
 			peak_model = PeakShiftModel(ip_tags, options.fragment_size, model_threshold)
 		else:
 			model_threshold = model_threshold * 1.25
-			print_status('Model threshold was set too low, trying: %.1f' % model_threshold, options.verbose)
 			peak_model = PeakShiftModel(ip_tags, options.fragment_size, model_threshold)
-	print_status('Used best %d peaks for modeling ...' % peak_model.peaks_incorporated, options.verbose)
 	print_status('Peak size is %d bp' % peak_model.peak_size, options.verbose)
 	
 	# find peaks for modeling
@@ -88,11 +85,11 @@ def main():
 	
 	# plot model using R
 	print_status('Plotting the model ...', options.verbose)
-	create_model_plot(plus_model, minus_model, ip)
+	create_model_plot(plus_model, minus_model, ip_file)
 	
 	# serialize model
 	print_status('Serializing the model for later use ...', options.verbose)
-	filename = ip[:-4] + '_model.pkl'
+	filename = ip_file[:-4] + '_model.pkl'
 	dump((plus_model, minus_model), open(filename, 'w'))
 
 	# find peaks using emirical model
@@ -113,12 +110,11 @@ def main():
 	ip_peaks.calculate_fdr(control_peaks.peaks)
 	
 	# write output as bed files
-	print_status('Writing results to file ...', options.verbose)
 	ip_peaks.write_to_stdout(options)
 	
 	# write peaks in input to file
-	print_status('Writing input peaks to file ...', options.verbose)
-	control_peaks.write_artifact_peaks(control)
+	print_status('Writing input peaks to %s' % control_file[:-4] + '_peaks.tsv', options.verbose)
+	control_peaks.write_artifact_peaks(control_file)
 	print_status('Done!', options.verbose)
 
 
@@ -220,7 +216,6 @@ class TagContainer:
 		# intitialize an empty object
 		self.tags = {}
 		self.tag_number = 0
-		self.sorted = False
 
 	def __call__(self, bed_file):
 		# when called like a function load bed file and return self
@@ -244,17 +239,22 @@ class TagContainer:
 	def load_bed(self, bed_file):
 		# parse a bed file and add contents to self
 		for i in csv.reader(open(bed_file), delimiter='\t'):
-			chrom = i[0]
-			start = int(i[1])
-			end = int(i[2])
-			strand = i[5]
-			# determine five prime end
-			if strand == '+':
-				fiveprime = start
-			else:
-				fiveprime = end
-			# add tag to container
-			self.add_tag(chrom, strand, fiveprime)
+			try:
+				chrom = i[0]
+				start = int(i[1])
+				end = int(i[2])
+				strand = i[5]
+				# determine five prime end
+				if strand == '+':
+					fiveprime = start
+				elif strand == '-':
+					fiveprime = end
+				# add tag to container
+				self.add_tag(chrom, strand, fiveprime)
+			except:
+				sys.stderr.write("Input file is not in BED format!\n")
+				sys.exit(1)
+				
 			
 	def sort_tags(self):
 		# sort all tags while preserving the array
@@ -262,13 +262,9 @@ class TagContainer:
 			# as sorted returns conversion back to array is required
 			self.tags[chrom]['+'] = array('i', sorted(self.tags[chrom]['+']))
 			self.tags[chrom]['-'] = array('i', sorted(self.tags[chrom]['-']))
-		# change sorted flag to true
-		self.sorted = True
 	
 	def get_chrom_size(self, chrom):
 		# chromosome size to consider for scanning of both strands
-		if not self.sorted:
-			self.sort_tags()
 		if self.tags[chrom]['+'] and self.tags[chrom]['-']:
 			chrom_size = self.tags[chrom]['-'][-1]
 			return chrom_size
@@ -497,7 +493,7 @@ class PeakContainer:
 			while self.minus_window and self.minus_window[0] < (self.position - self.peak_shift):
 				self.minus_window.popleft()
 			# if number of candidates found is high readjust threshold
-			if self.peak_count > 25000:
+			if self.peak_count > 35000:
 				self.adjust_threshold()
 			# add position to region if over threshold
 			score = self.calculate_score()
@@ -545,13 +541,13 @@ class PeakContainer:
 
 	def adjust_threshold(self):
 		# allows for dynamic adjustment of peak calling threshold
-		# restricts the number of candidate peaks to investigate to 20000
+		# restricts the number of candidate peaks to investigate to 30000
 		peak_scores = []
 		for chrom in self.peaks.keys():
 			for peak in self.peaks[chrom]:
 				peak_scores.append(peak.score)
-		# set score to 20000th
-		self.score_threshold = sorted(peak_scores)[-20000]
+		# set score to 30000th
+		self.score_threshold = sorted(peak_scores)[-30000]
 		# remove peaks below threshold
 		for chrom in self.peaks.keys():
 			self.peaks[chrom] = [peak for peak in self.peaks[chrom] if peak.score >= self.score_threshold]
