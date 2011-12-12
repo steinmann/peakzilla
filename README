@@ -15,7 +15,7 @@ Options:
 
 DEPENDENCIES
 ------------
-* Runs on OSX and Linux based operating systems.
+* Runs on OSX and Linux based operating systems
 * Requires Python 2.5 or greater
 * For up to 5x better perormance use PyPy instead of CPython
 
@@ -71,6 +71,6 @@ printed to output.
 
 OUTPUT FORMAT
 -------------
-* Results are printed as a table of tab delimited values to stdout.
-* Status messages are printed to stderr. 
+* Results are printed as a table of tab delimited values to stdout
+* Status messages are printed to stderr
 

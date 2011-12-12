@@ -126,19 +126,22 @@ def create_model_plot(plus_model, minus_model, ip_file_name):
 	# output model in an R friendly fashion
 		filename = ip_file_name[:-4] + '_model.R'
 		pdf_name = ip_file_name[:-4] + '_model.pdf'
-		f = open(filename, 'w')
-		f.close()
-		f = open(filename, 'a')
-		f.write('plus = c',)
-		f.write(str(tuple(plus_model))+'\n')
-		f.write('minus = c',)
-		f.write(str(tuple(minus_model))+'\n')
-		f.write('pdf(file=\'%s\')\n' % pdf_name)
-		f.write('shift = (length(plus) - 1) / 2\n')
-		f.write('plot(seq(-shift,shift), plus,type=\'l\', col=\'red\')\n')
-		f.write('lines(seq(-shift,shift), minus, col=\'blue\')\n')
-		f.write('dev.off()')
-		f.close()
+		try:
+			f = open(filename, 'w')
+			f.close()
+			f = open(filename, 'a')
+			f.write('plus = c',)
+			f.write(str(tuple(plus_model))+'\n')
+			f.write('minus = c',)
+			f.write(str(tuple(minus_model))+'\n')
+			f.write('pdf(file=\'%s\')\n' % pdf_name)
+			f.write('shift = (length(plus) - 1) / 2\n')
+			f.write('plot(seq(-shift,shift), plus,type=\'l\', col=\'red\')\n')
+			f.write('lines(seq(-shift,shift), minus, col=\'blue\')\n')
+			f.write('dev.off()')
+			f.close()
+		except:
+			print_status('WARNING: You dont have write permissions in this folder! No modeldata saved!', True)
 		try:
 			os.system('R --slave < %s > /dev/null' % filename)
 		except:
