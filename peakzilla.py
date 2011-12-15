@@ -9,6 +9,7 @@
 import sys
 import csv
 import os
+import math
 from cPickle import dump
 from operator import add
 from time import strftime, localtime
@@ -37,6 +38,10 @@ def main():
 	
 	parser.add_option("-q", "--quiet",\
 	action = "store_false", dest="verbose", default=True,\
+	help = "don't print status messages")
+	
+	parser.add_option("-g", "--gaussian",\
+	action = "store_true", dest="gaussian", default=False,\
 	help = "don't print status messages")
 	
 	# read arguments and options
@@ -74,14 +79,22 @@ def main():
 			peak_model = PeakShiftModel(ip_tags, options.fragment_size, model_threshold)
 	print_status('Peak size is %d bp' % peak_model.peak_size, options.verbose)
 	
-	# find peaks for modeling
-	print_status('Finding peaks for modeling ...', options.verbose)
-	ip_peaks = PeakContainer(ip_tags, control_tags, peak_model.peak_size, peak_model.plus_model, peak_model.minus_model)
-	
-	# model tag distribution 
-	print_status('Modeling tag distribution ...', options.verbose)
-	plus_model = ip_peaks.model_tag_distribution()[0]
-	minus_model = ip_peaks.model_tag_distribution()[1]
+	# depending on option setting determine model using gaussian or empirically
+	if options.gaussian:
+		# estimate tag distirbution using gaussian function
+		print_status('Estimating tag distribution using gaussian ...', options.verbose)
+		model = generate_ideal_model(peak_model.peak_size)
+		plus_model = model[0]
+		minus_model = model[1]
+	else:
+		# find peaks for modeling
+		print_status('Finding peaks for modeling ...', options.verbose)
+		ip_peaks = PeakContainer(ip_tags, control_tags, peak_model.peak_size, peak_model.plus_model, peak_model.minus_model)
+		
+		# model tag distribution 
+		print_status('Modeling tag distribution ...', options.verbose)
+		plus_model = ip_peaks.model_tag_distribution()[0]
+		minus_model = ip_peaks.model_tag_distribution()[1]
 	
 	# plot model using R
 	print_status('Plotting the model ...', options.verbose)
@@ -93,7 +106,7 @@ def main():
 	dump((plus_model, minus_model), open(filename, 'w'))
 
 	# find peaks using emirical model
-	print_status('Finding peaks with empirical peak model ...', options.verbose)
+	print_status('Finding peaks with peak model ...', options.verbose)
 	ip_peaks = PeakContainer(ip_tags, control_tags, peak_model.peak_size, plus_model, minus_model)
 	
 	# find peaks using emirical model in control sample
@@ -207,6 +220,32 @@ def convolve(signal, filter_width):
 			window.popleft()
 		result.append(sum(window)/ filter_width)
 	return result[overhang:]
+
+def generate_ideal_model(peaksize):
+	# simulate ideal model
+	stdev = peaksize / 5 # appears to fit well with empirical data
+	mean_plus_model = (peaksize - 1) / 4
+	mean_minus_model = peaksize - (peaksize - 1) / 4
+	peak_positions = range(1,peaksize + 1)
+	def gauss(x, mu, sigma):
+		# gaussian function
+		a = 1
+		e = math.e
+		return(a * e ** (- ((x - mu) ** 2) / (2.0 * sigma ** 2)))
+	# generate plus model from gaussian function
+	plus_model = []
+	for i in peak_positions:
+		plus_model.append(gauss(i, mean_plus_model, stdev))
+	# generate minus model from gaussian function
+	minus_model = []
+	for i in peak_positions:
+		minus_model.append(gauss(i, mean_minus_model, stdev))
+	# normalize model
+	norm_factor = (sum(plus_model) + sum(minus_model)) / peaksize
+	for i in range(peaksize):
+		plus_model[i] = plus_model[i]/norm_factor
+		minus_model[i] = minus_model[i]/norm_factor
+	return(plus_model, minus_model)
 
 
 class TagContainer:
