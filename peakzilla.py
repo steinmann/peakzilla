@@ -42,7 +42,7 @@ def main():
 	
 	parser.add_option("-g", "--gaussian",\
 	action = "store_true", dest="gaussian", default=False,\
-	help = "don't print status messages")
+	help = "use gaussian for model estimate instead of best peaks")
 	
 	# read arguments and options
 	(options, args) = parser.parse_args()
