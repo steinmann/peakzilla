@@ -24,9 +24,9 @@ def main():
 	usage = 'python peakzilla.py [OPTIONS] chip.bed control.bed > results.tsv'
 	parser = OptionParser(usage=usage)
 	
-	parser.add_option("-s", "--fragment_size",\
-	type = "int", dest="fragment_size", default="200",\
-	help = "upper limit of fragment size in bp: default=200")
+	parser.add_option("-m", "--model_peaks",\
+	type = "int", dest="n_model_peaks", default='200',\
+	help = "number of peaks to be used for model: default = 200")
 	
 	parser.add_option("-f", "--fdr",\
 	type = "float", dest="fdr", default='1',\
@@ -46,37 +46,33 @@ def main():
 	
 	# read arguments and options
 	(options, args) = parser.parse_args()
-	if len(args) != 2:
+	if len(args) > 2 or 0:
 		# return help message if argment number is incorrect
 		parser.print_help()
 		sys.exit(0)
 	ip_file = args[0]
-	control_file = args[1]
+	has_control = False
+	if len(args) == 2:
+		control_file = args[1]
+		has_control = True
 	
 	# load tags
 	print_status('Loading tags ...', options.verbose)
 	ip_tags = TagContainer()
-	control_tags = TagContainer()
 	ip_tags(ip_file)
-	control_tags(control_file)
+	control_tags = TagContainer()
+	if has_control:
+		control_tags(control_file)
 	
 	# report tag number
 	print_status('Tags in IP: %d' % ip_tags.tag_number, options.verbose)
-	print_status('Tags in control: %d' % control_tags.tag_number, options.verbose)
+	if has_control:
+		print_status('Tags in control: %d' % control_tags.tag_number, options.verbose)
 
-	# first attempt of modeling peak size
+	# model peak size
 	print_status('Modeling peak size and shift ...', options.verbose)
-	model_threshold = 120
-	peak_model = PeakShiftModel(ip_tags, options.fragment_size, model_threshold)
-	
-	# change model threshold until it yields a reasonable number of peaks
-	while peak_model.peaks_incorporated < 200 or peak_model.peaks_incorporated > 500:
-		if peak_model.peaks_incorporated < 500:
-			model_threshold = model_threshold / 2
-			peak_model = PeakShiftModel(ip_tags, options.fragment_size, model_threshold)
-		else:
-			model_threshold = model_threshold * 1.25
-			peak_model = PeakShiftModel(ip_tags, options.fragment_size, model_threshold)
+	peak_model = PeakShiftModel(ip_tags, options)
+	print_status('Top %d paired peaks used to model peak size' % options.n_model_peaks, options.verbose)
 	print_status('Peak size is %d bp' % peak_model.peak_size, options.verbose)
 	
 	# depending on option setting determine model using gaussian or empirically
@@ -110,25 +106,31 @@ def main():
 	ip_peaks = PeakContainer(ip_tags, control_tags, peak_model.peak_size, plus_model, minus_model)
 	
 	# find peaks using emirical model in control sample
-	print_status('Finding peaks in control sample ...', options.verbose)
-	control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, plus_model, minus_model)
+	if has_control:
+		print_status('Finding peaks in control sample ...', options.verbose)
+		control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, plus_model, minus_model)
 	
 	# calculate distribution scores
 	print_status('Calculating tag distribution scores ...', options.verbose)
 	ip_peaks.determine_distribution_scores(plus_model, minus_model)
-	control_peaks.determine_distribution_scores(plus_model, minus_model)
+	if has_control:
+		control_peaks.determine_distribution_scores(plus_model, minus_model)
 	 
 	# calculate FDR
-	print_status('Calculating FDR ...', options.verbose)
-	ip_peaks.calculate_fdr(control_peaks.peaks)
+	if has_control:
+		print_status('Calculating FDR ...', options.verbose)
+		ip_peaks.calculate_fdr(control_peaks.peaks)
+	else:
+		print_status('No FDR calculated as control sample is missing!', options.verbose)
 	
 	# write output as bed files
 	ip_peaks.write_to_stdout(options)
 	
 	# write peaks in input to file
-	print_status('Writing input peaks to %s' % control_file[:-4] + '_peaks.tsv', options.verbose)
-	control_peaks.write_artifact_peaks(control_file)
-	print_status('Done!', options.verbose)
+	if has_control:
+		print_status('Writing input peaks to %s' % control_file[:-4] + '_peaks.tsv', options.verbose)
+		control_peaks.write_artifact_peaks(control_file)
+		print_status('Done!', options.verbose)
 
 
 def create_model_plot(plus_model, minus_model, ip_file_name):
@@ -335,11 +337,10 @@ class TagContainer:
 
 class PeakShiftModel:
 	# class for modeling peak size and strand shift
-	def __init__(self, tags, fragment_size, fold_threshold):
+	def __init__(self, tags, options):
 		self.tags = tags
-		self.window_size = fragment_size / 2
-		self.fold_threshold = fold_threshold
-		self.tag_threshold = tags.tag_number / float(tags.genome_size()) * fragment_size / 2 * fold_threshold
+		self.window_size = 100
+		self.tag_threshold = 10
 		self.peak_shifts = []
 		self.peak_shift = None
 		self.peak_size = None
@@ -347,28 +348,59 @@ class PeakShiftModel:
 		self.plus_model = None
 		self.minus_model = None
 		self.peaks_incorporated = 0
+		self.peaks_found = 0
+		self.peaks = {}
+		self.n_model_peaks = options.n_model_peaks
 		self.build()
 
 	def build(self):
 		# for all chromosomes look for shifted peaks
 		for chrom in self.tags.get_chrom_names():
-			plus_peaks = self.find_simple_peaks(chrom, '+')
-			minus_peaks = self.find_simple_peaks(chrom, '-')
-			self.determine_shifts(plus_peaks, minus_peaks)
-		# calculate the meidan peak_shift
-		if self.peak_shifts:
-			self.peak_shift = int(median(self.peak_shifts))
-			# peak size is 2 * shift size + 1
-			self.peak_size = self.peak_shift * 2 + 1
-			self.plus_model = [1] * self.peak_shift  + [0] * (self.peak_shift + 1)
-			self.minus_model = [0] * (self.peak_shift + 1) + [1] * self.peak_shift
+			self.find_simple_peaks(chrom, '+')
+			self.find_simple_peaks(chrom, '-')
+		for chrom in self.peaks.keys():
+			self.determine_shifts(self.peaks[chrom]['+'], self.peaks[chrom]['-'])
+		# calculate the median peak_shift of top peaks
+		self.peak_shifts = sorted(self.peak_shifts, reverse=True)
+		top_shifts = []
+		for i in range(self.n_model_peaks):
+			top_shifts.append(self.peak_shifts[i][1])
+		self.peak_shift = int(median(top_shifts))
+		# peak size is 2 * shift size + 1
+		self.peak_size = self.peak_shift * 2 + 1
+		self.plus_model = [1] * self.peak_shift  + [0] * (self.peak_shift + 1)
+		self.minus_model = [0] * (self.peak_shift + 1) + [1] * self.peak_shift
+	
+	def adjust_threshold(self):
+		# allows for dynamic adjustment of peak calling threshold
+		peak_scores = []
+		for chrom in self.peaks:
+			for peak in self.peaks[chrom]['+']:
+				peak_scores.append(peak[0])
+			for peak in self.peaks[chrom]['-']:
+				peak_scores.append(peak[0])	
+		# threshold to get sufficiently large number of candidates
+		self.tag_threshold = sorted(peak_scores)[-self.n_model_peaks * 8]
+		# remove peaks below threshold
+		for chrom in self.peaks.keys():
+			self.peaks[chrom]['+'] = [peak for peak in self.peaks[chrom]['+'] if peak[0] >= self.tag_threshold]
+			self.peaks[chrom]['-'] = [peak for peak in self.peaks[chrom]['-'] if peak[0] >= self.tag_threshold]
+		# recount peaks
+		self.peak_count = 0
+		for chrom in self.peaks:
+			self.peak_count += len(self.peaks[chrom]['+'])
+			self.peak_count += len(self.peaks[chrom]['-'])
 
 	def find_simple_peaks(self, chrom, strand):
 		# return maxima of tag counts in regions with more tags than threshold
 		tags = self.tags.get_tags(chrom, strand)
 		window = deque([])
-		peak_position_list = []
 		peak_region = []
+		# initiate dicts in case not present
+		if not chrom in self.peaks:
+			self.peaks[chrom] = {}
+			self.peaks[chrom]['+'] = []
+			self.peaks[chrom]['-'] = []
 		for tag in tags:
 			# add a new tag to the window and reposition it
 			window.append(tag)
@@ -382,9 +414,9 @@ class PeakShiftModel:
 				position = tag - self.window_size / 2
 				peak_region.append((tag_count, position))
 			elif peak_region:
-				peak_position_list.append(max(peak_region)[1])
+				self.peaks[chrom][strand].append(max(peak_region))
+				self.peaks_found += 1
 				peak_region = []
-		return peak_position_list
 	
 	def determine_shifts(self, plus_peaks, minus_peaks):
 		# looks for minus peaks upstream of plus peaks within fragment size
@@ -392,11 +424,10 @@ class PeakShiftModel:
 		for plus_peak in plus_peaks:
 			while minus_peaks:
 				minus_peak = minus_peaks[0]
-				if minus_peak > plus_peak:
-					peak_shift = minus_peak - plus_peak
-					if peak_shift < self.window_size * 2 and peak_shift > self.window_size / 2 :
-						# only append if in agreement with max fragment size
-						self.peak_shifts.append(peak_shift)
+				if minus_peak[1] > plus_peak[1]:
+					peak_shift = minus_peak[1] - plus_peak[1]
+					if peak_shift < 500:
+						self.peak_shifts.append((min(minus_peak[0], plus_peak[0]), peak_shift))
 						self.peaks_incorporated += 1
 					break
 				minus_peaks.popleft()
@@ -416,7 +447,7 @@ class Peak:
 		self.fold_enrichment = 0
 		self.plus_freq_dist = None
 		self.minus_freq_dist = None
-		self.fdr = None
+		self.fdr = 0
 		self.dist_score = None
 		self.survivals = 0
 		self.plus_reg_tags_ip = None
