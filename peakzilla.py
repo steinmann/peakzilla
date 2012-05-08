@@ -28,6 +28,10 @@ def main():
 	type = "int", dest="n_model_peaks", default='200',\
 	help = "number of peaks to be used for model: default = 200")
 	
+	parser.add_option("-i", "--min_shift",\
+	type = "int", dest="min_shift", default='1',\
+	help = "number of peaks to be used for model: default = 1")
+	
 	parser.add_option("-f", "--fdr",\
 	type = "float", dest="fdr", default='1',\
 	help = "cutoff for the estimated FDR value: default = 1")
@@ -46,7 +50,7 @@ def main():
 	
 	# read arguments and options
 	(options, args) = parser.parse_args()
-	if len(args) > 2 or 0:
+	if len(args) > 2 or len(args) == 0:
 		# return help message if argment number is incorrect
 		parser.print_help()
 		sys.exit(0)
@@ -351,6 +355,7 @@ class PeakShiftModel:
 		self.peaks_found = 0
 		self.peaks = {}
 		self.n_model_peaks = options.n_model_peaks
+		self.min_shift = options.min_shift
 		self.build()
 
 	def build(self):
@@ -426,7 +431,7 @@ class PeakShiftModel:
 				minus_peak = minus_peaks[0]
 				if minus_peak[1] > plus_peak[1]:
 					peak_shift = minus_peak[1] - plus_peak[1]
-					if peak_shift < 500:
+					if peak_shift < 500 and peak_shift > self.min_shift:
 						self.peak_shifts.append((min(minus_peak[0], plus_peak[0]), peak_shift))
 						self.peaks_incorporated += 1
 					break
