@@ -35,9 +35,9 @@ def main():
 	type = "float", dest="fdr", default='5',\
 	help = "cutoff for the estimated FDR value: default = 5")
 	
-	parser.add_option("-c", "--score_cutoff",\
-	type = "float", dest="score_cutoff", default='2',\
-	help = "minimum cutoff for score (~ fold enrichment): default = 2")
+	parser.add_option("-c", "--enrichment_cutoff",\
+	type = "float", dest="enrichment_cutoff", default='2',\
+	help = "minimum cutoff for score fold enrichment: default = 2")
 	
 	parser.add_option("-q", "--quiet",\
 	action = "store_false", dest="verbose", default=True,\
@@ -735,8 +735,8 @@ class PeakContainer:
 		peak_count = 0
 		for chrom in sorted(self.peaks.keys()):
 			for peak in self.peaks[chrom]:
-				score = peak.get_score()
-				if peak.fdr <= options.fdr and score >= options.score_cutoff:
+				if peak.fdr <= options.fdr and peak.fold_enrichment >= options.enrichment_cutoff:
+					score = peak.get_score()
 					peak_count += 1
 					summit = peak.position
 					start = summit - self.peak_shift
@@ -751,7 +751,7 @@ class PeakContainer:
 					fdr = peak.fdr
 					output = (chrom, start, end, name, summit, score, raw_score, background, enrichment, dist_score, fdr)
 					sys.stdout.write('%s\t%d\t%d\t%s\t%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % output)
-		print_status('%d peaks detected at FDR %.1f%% and %.1f fold enrichment cutoff' % (peak_count, options.fdr, options.score_cutoff), options.verbose)
+		print_status('%d peaks detected at FDR %.1f%% and %.1f fold enrichment cutoff' % (peak_count, options.fdr, options.enrichment_cutoff), options.verbose)
 	
 	def write_artifact_peaks(self, control_file_name):
 		# write peaks found in input to file
