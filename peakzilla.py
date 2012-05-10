@@ -32,19 +32,19 @@ def main():
 	help = "number of peaks to be used for model: default = 1")
 	
 	parser.add_option("-f", "--fdr",\
-	type = "float", dest="fdr", default='5',\
-	help = "cutoff for the estimated FDR value: default = 5")
+	type = "float", dest="fdr", default='1',\
+	help = "cutoff for the estimated FDR value: default = 1")
 	
-	parser.add_option("-c", "--enrichment_cutoff",\
-	type = "float", dest="enrichment_cutoff", default='2',\
-	help = "minimum cutoff for fold enrichment: default = 2")
+	parser.add_option("-c", "--score_cutoff",\
+	type = "float", dest="score_cutoff", default='2',\
+	help = "minimum cutoff for score (~ fold enrichment): default = 2")
 	
 	parser.add_option("-q", "--quiet",\
 	action = "store_false", dest="verbose", default=True,\
 	help = "don't print status messages")
 	
 	parser.add_option("-g", "--gaussian",\
-	action = "store_false", dest="gaussian", default=True,\
+	action = "store_true", dest="gaussian", default=False,\
 	help = "use gaussian for model estimate instead of best peaks")
 	
 	# read arguments and options
@@ -128,9 +128,7 @@ def main():
 	if has_control:
 		print_status('Writing input peaks to %s' % control_file[:-4] + '_peaks.tsv', options.verbose)
 		control_peaks.write_artifact_peaks(control_file)
-		
-	# let user know that run is finished
-	print_status('Done!', options.verbose)
+		print_status('Done!', options.verbose)
 
 
 def create_model_plot(plus_model, minus_model, ip_file_name):
@@ -441,8 +439,8 @@ class Peak:
 		self.shift = 0
 		self.position = None
 		self.tags = ([],[])
-		self.signal = 0
 		self.score = 0
+		self.signal = 0
 		self.background = 0
 		self.median_score_ip = None
 		self.median_score_control = None
@@ -459,16 +457,25 @@ class Peak:
 		# for truth testing and number of tags
 		return int(self.score)
 	
-	def calc_fold_enrichment(self, total_IP, total_control):
-		# calculates normalized fold enrichment
-		if self.background == 0:
-			# avoid division by zero if no tags are in the background
-			self.background = 1
-		self.fold_enrichment = (self.score / float(total_IP)) / (self.background / float(total_control))
+	def calc_fold_enrichment(self):
+		# normalize by median score count in 4 kbp window around peak summit
+		cov_norm_factor = self.median_score_ip / self.median_score_control
+		# if background is abnormaly low use local score median for fold enrichment calculation
+		if self.background < self.median_score_ip:
+			self.fold_enrichment = (self.score - self.background * cov_norm_factor) / self.median_score_ip
+		# else use median normalized background at exactly the same position in control sample
+		else:
+			self.fold_enrichment = self.score / (self.background * cov_norm_factor)
 	
 	def calc_signal_over_background(self, total_IP, total_control):
 		# normalize by median score count in 4 kbp window around peak summit
 		self.signal = (self.score * 10**6 / float(total_IP)) - (self.background * 10**6 / float(total_control))
+		'''
+		print self.score
+		print self.background
+		print 10**6 / float(total_IP)
+		print 10**6 / float(total_control)
+		print 'signal', self.signal'''
 	
 	def determine_tag_distribution(self, filter_width):
 		# return smoothed frequency distribution position of tags
@@ -498,8 +505,12 @@ class Peak:
 		freq_dist = self.plus_freq_dist[:self.shift] + self.minus_freq_dist[-self.shift:]
 		# dist score is the p-value returned by the chi-square test
 		self.dist_score = chisquare(freq_dist, model)[1]
-	
+		
 	def get_score(self):
+		# final score is fold enrichment times goodness of fit to model
+		return self.fold_enrichment * self.dist_score
+	
+	def get_signal_score(self):
 		# final score is fold enrichment times goodness of fit to model
 		return self.signal * self.dist_score
 
@@ -525,6 +536,7 @@ class PeakContainer:
 		# perform main peak finding tasks
 		for chrom in self.ip_tags.get_chrom_names():	
 			self.find_peaks(chrom)
+			self.measure_local_median(chrom)
 			self.measure_background(chrom)
 			self.determine_fold_enrichment(chrom)
 			self.determine_signal_over_background(chrom)
@@ -657,12 +669,85 @@ class PeakContainer:
 			# add position to region if over threshold
 			self.position = peak.position
 			peak.background = self.calculate_score()
+		
+	def measure_local_median(self, chrom):
+		# measure median score arround a peak +/- 2000 bp for ip tags
+		plus_tags = deque(self.ip_tags.get_tags(chrom, '+'))
+		minus_tags = deque(self.ip_tags.get_tags(chrom, '-'))
+		local_plus_tags = deque([])
+		local_minus_tags = deque([])
+		for peak in self.peaks[chrom]:
+			# fill windows
+			while plus_tags and plus_tags[0] <= (peak.position + 2000):
+				local_plus_tags.append(plus_tags.popleft())
+			while minus_tags and minus_tags[0] <= (peak.position + 2000):
+				local_minus_tags.append(minus_tags.popleft())
+			# get rid of old tags not fitting in the window any more
+			while local_plus_tags  and local_plus_tags [0] < (peak.position - 2000):
+				local_plus_tags .popleft()
+			while local_minus_tags and local_minus_tags[0] < (peak.position - 2000):
+				local_minus_tags.popleft()
+			# calculate normalized background level
+			# add position to region if over threshold
+			peak.plus_reg_tags_ip = len(local_plus_tags) + len(local_minus_tags)
+			peak.median_score_ip = self.get_median(copy(local_plus_tags), copy(local_minus_tags), peak.position)	
+		# measure median score arround a peak +/- 2000 bp for control tags
+		plus_tags = deque(self.control_tags.get_tags(chrom, '+'))
+		minus_tags = deque(self.control_tags.get_tags(chrom, '-'))
+		local_plus_tags = deque([])
+		local_minus_tags = deque([])
+		for peak in self.peaks[chrom]:
+			# fill windows
+			while plus_tags and plus_tags[0] <= (peak.position + 2000):
+				local_plus_tags.append(plus_tags.popleft())
+			while minus_tags and minus_tags[0] <= (peak.position + 2000):
+				local_minus_tags.append(minus_tags.popleft())
+			# get rid of old tags not fitting in the window any more
+			while local_plus_tags  and local_plus_tags [0] < (peak.position - 2000):
+				local_plus_tags .popleft()
+			while local_minus_tags and local_minus_tags[0] < (peak.position - 2000):
+				local_minus_tags.popleft()
+			# calculate normalized background level
+			# add position to region if over threshold
+			peak.plus_reg_tags_control = len(local_plus_tags) + len(local_minus_tags)
+			peak.median_score_control = self.get_median(copy(local_plus_tags), copy(local_minus_tags), peak.position)
+			
+	def get_median(self, plus_tags, minus_tags, peak_position):
+		# calculate score every 10 bp and return median score
+		score_list = []
+		self.plus_window = deque([])
+		self.minus_window = deque([])
+		self.position = peak_position - 2000 + self.peak_shift
+		region_end = peak_position + 2000 - self.peak_shift
+		while self.position <= region_end:
+			# fill windows
+			while plus_tags and plus_tags[0] <= (self.position + self.peak_shift):
+				self.plus_window.append(plus_tags.popleft())
+			while minus_tags and minus_tags[0] <= (self.position + self.peak_shift):
+				self.minus_window.append(minus_tags.popleft())
+			# get rid of old tags not fitting in the window any more
+			while self.plus_window and self.plus_window[0] < (self.position - self.peak_shift):
+				self.plus_window.popleft()
+			while self.minus_window and self.minus_window[0] < (self.position - self.peak_shift):
+				self.minus_window.popleft()
+			# add position to region if over threshold
+			score = self.calculate_score()
+			if score > 0:
+				# dont include region that is not mappable
+				score_list.append(score)
+			self.position += 10
+		score_median = median(score_list)
+		# if no tags are in the region at all just return 1 as median score
+		if score_median > 0:
+			return score_median
+		else:
+			return 1
 
 	def determine_fold_enrichment(self, chrom):
 		# for evey peak calculate fold enrichment
 		for chrom in self.peaks.keys():
 			for peak in self.peaks[chrom]:
-				peak.calc_fold_enrichment(self.ip_tags.tag_number, self.control_tags.tag_number)
+				peak.calc_fold_enrichment()
 	
 	def determine_signal_over_background(self, chrom):
 		# for evey peak calculate fold enrichment
@@ -731,11 +816,12 @@ class PeakContainer:
 
 	def write_to_stdout(self, options):
 		# write results to stdout
-		sys.stdout.write('Chromosome\tStart\tEnd\tName\tSummit\tScore\tRawScore\tBackground\tFoldEnrichment\tDistributionScore\tFDR\n')
+		sys.stdout.write('Chromosome\tStart\tEnd\tName\tSummit\tScore\tSignalScore\tRawScore\tLocalScoreMedian\tLocalScoreMedianBg\tBackground\tFoldEnrichment\tDistributionScore\tFDR\n')
 		peak_count = 0
 		for chrom in sorted(self.peaks.keys()):
 			for peak in self.peaks[chrom]:
-				if peak.fdr <= options.fdr and peak.fold_enrichment >= options.enrichment_cutoff:
+				score = peak.get_score()
+				if peak.fdr <= options.fdr and score >= options.score_cutoff:
 					peak_count += 1
 					summit = peak.position
 					start = summit - self.peak_shift
@@ -743,21 +829,23 @@ class PeakContainer:
 						start = 0
 					end = summit + self.peak_shift
 					name = chrom + '_Peak_' + str(peak_count)
-					score = peak.get_score()
 					raw_score = peak.score
+					signal_score = peak.get_signal_score()
+					loc_med_score = peak.median_score_ip
+					loc_med_bg_score = peak.median_score_control
 					background = peak.background
 					enrichment = peak.fold_enrichment
 					dist_score = peak.dist_score
 					fdr = peak.fdr
-					output = (chrom, start, end, name, summit, score, raw_score, background, enrichment, dist_score, fdr)
-					sys.stdout.write('%s\t%d\t%d\t%s\t%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % output)
-		print_status('%d peaks detected at FDR %.1f%% and %.1f fold enrichment cutoff' % (peak_count, options.fdr, options.enrichment_cutoff), options.verbose)
+					output = (chrom, start, end, name, summit, score, signal_score, raw_score, loc_med_score, loc_med_bg_score, background, enrichment, dist_score, fdr)
+					sys.stdout.write('%s\t%d\t%d\t%s\t%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % output)
+		print_status('%d peaks detected at FDR %.1f%% and %.1f fold enrichment cutoff' % (peak_count, options.fdr, options.score_cutoff), options.verbose)
 	
 	def write_artifact_peaks(self, control_file_name):
 		# write peaks found in input to file
 		filename = control_file_name[:-4] + '_peaks.tsv'
 		f = open(filename, 'w')
-		f.write('Chromosome\tStart\tEnd\tName\tSummit\tScore\tRawScore\tBackground\tFoldEnrichment\tDistributionScore\n')
+		f.write('Chromosome\tStart\tEnd\tName\tSummit\tScore\tSignalScore\tRawScore\tLocalScoreMedian\tLocalScoreMedianBg\tBackground\tFoldEnrichment\tDistributionScore\n')
 		f.close()
 		peak_count = 0
 		for chrom in sorted(self.peaks.keys()):
@@ -771,13 +859,16 @@ class PeakContainer:
 					end = summit + self.peak_shift
 					name = chrom + '_Peak_' + str(peak_count)
 					score = peak.get_score()
+					signal_score = peak.get_signal_score()
 					raw_score = peak.score
+					loc_med_score = peak.median_score_ip
+					loc_med_bg_score = peak.median_score_control
 					background = peak.background
 					enrichment = peak.fold_enrichment
 					dist_score = peak.dist_score
-					output = (chrom, start, end, name, summit, score, raw_score, background, enrichment, dist_score)
+					output = (chrom, start, end, name, summit, score, signal_score, raw_score, loc_med_score, loc_med_bg_score, background, enrichment, dist_score)
 					f = open(filename, 'a')
-					f.write('%s\t%d\t%d\t%s\t%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % output)
+					f.write('%s\t%d\t%d\t%s\t%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % output)
 					f.close()
 
 
