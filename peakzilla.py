@@ -460,15 +460,17 @@ class Peak:
 		return int(self.score)
 	
 	def calc_fold_enrichment(self, total_IP, total_control):
-		# calculates normalized fold enrichment
-		if self.background == 0:
-			# avoid division by zero if no tags are in the background
-			self.background = 1
-		self.fold_enrichment = (self.score / float(total_IP)) / (self.background / float(total_control))
-	
+		if total_control == 0:
+			# avoid zero division if no control sample is available
+			total_control = 10**6
+		self.fold_enrichment = (self.score / float(total_IP)) / ((self.background + 1) / float(total_control))
+
 	def calc_signal_over_background(self, total_IP, total_control):
 		# normalize by median score count in 4 kbp window around peak summit
-		self.signal = (self.score * 10**6 / float(total_IP)) - (self.background * 10**6 / float(total_control))
+		if total_control == 0:
+			# avoid zero division if no control sample is available
+			total_control = 10**6
+		self.signal = (self.score * 10**6 / float(total_IP)) - ((self.background + 1) * 10**6 / float(total_control))
 	
 	def determine_tag_distribution(self, filter_width):
 		# return smoothed frequency distribution position of tags
