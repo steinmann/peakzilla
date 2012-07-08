@@ -759,7 +759,7 @@ class PeakContainer:
 			while control_scores and control_scores[0] >= ip_score:
 				control_scores.popleft()
 				control_count +=1
-			ip_fdr = control_count / ip_count * 100
+			ip_fdr = control_count / (control_count + ip_count) * 100
 			score2fdr[str(ip_score)] = ip_fdr
 		# add fdr to each peak object
 		for chrom in self.peaks.keys():
