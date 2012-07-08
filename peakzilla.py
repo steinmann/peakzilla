@@ -47,6 +47,10 @@ def main():
 	action = "store_false", dest="gaussian", default=True,\
 	help = "use gaussian for model estimate instead of best peaks")
 	
+	parser.add_option("-p", "--bedpe",\
+	action = "store_true", dest="bedpe", default=False,\
+	help = "input is in BEDPE format")
+	
 	# read arguments and options
 	(options, args) = parser.parse_args()
 	if len(args) > 2 or len(args) == 0:
@@ -62,10 +66,10 @@ def main():
 	# load tags
 	print_status('Loading tags ...', options.verbose)
 	ip_tags = TagContainer()
-	ip_tags(ip_file)
+	ip_tags(ip_file, options.bedpe)
 	control_tags = TagContainer()
 	if has_control:
-		control_tags(control_file)
+		control_tags(control_file, options.bedpe)
 	
 	# report tag number
 	print_status('Tags in IP: %d' % ip_tags.tag_number, options.verbose)
@@ -73,22 +77,29 @@ def main():
 		print_status('Tags in control: %d' % control_tags.tag_number, options.verbose)
 
 	# model peak size
-	print_status('Modeling peak size and shift ...', options.verbose)
-	peak_model = PeakShiftModel(ip_tags, options)
-	print_status('Top %d paired peaks used to model peak size' % options.n_model_peaks, options.verbose)
-	print_status('Peak size is %d bp' % peak_model.peak_size, options.verbose)
+	if not options.bedpe:
+		print_status('Modeling peak size and shift ...', options.verbose)
+		peak_model = PeakShiftModel(ip_tags, options)
+		peak_size = peak_model.peak_size
+		print_status('Top %d paired peaks used to model peak size' % options.n_model_peaks, options.verbose)
+		print_status('Peak size is %d bp' % peak_size, options.verbose)
+	else:
+		print_status('Determine peak size from fragment size ...', options.verbose)
+		peak_size =  2 * ip_tags.fragment_length + 1
+		print_status('Peak size is %d bp' % peak_size, options.verbose)
+		
 	
 	# depending on option setting determine model using gaussian or empirically
 	if options.gaussian:
 		# estimate tag distirbution using gaussian function
 		print_status('Estimating tag distribution using gaussian ...', options.verbose)
-		model = generate_ideal_model(peak_model.peak_size)
+		model = generate_ideal_model(peak_size)
 		plus_model = model[0]
 		minus_model = model[1]
 	else:
 		# find peaks for modeling
 		print_status('Finding peaks for modeling ...', options.verbose)
-		ip_peaks = PeakContainer(ip_tags, control_tags, peak_model.peak_size, peak_model.plus_model, peak_model.minus_model)
+		ip_peaks = PeakContainer(ip_tags, control_tags, peak_size, peak_model.plus_model, peak_model.minus_model)
 		
 		# model tag distribution 
 		print_status('Modeling tag distribution ...', options.verbose)
@@ -102,12 +113,12 @@ def main():
 
 	# find peaks using emirical model
 	print_status('Finding peaks with peak model ...', options.verbose)
-	ip_peaks = PeakContainer(ip_tags, control_tags, peak_model.peak_size, plus_model, minus_model)
+	ip_peaks = PeakContainer(ip_tags, control_tags, peak_size, plus_model, minus_model)
 	
 	# find peaks using emirical model in control sample
 	if has_control:
 		print_status('Finding peaks in control sample ...', options.verbose)
-		control_peaks = PeakContainer(control_tags, ip_tags, peak_model.peak_size, plus_model, minus_model)
+		control_peaks = PeakContainer(control_tags, ip_tags, peak_size, plus_model, minus_model)
 	
 	# calculate distribution scores
 	print_status('Calculating tag distribution scores ...', options.verbose)
@@ -257,10 +268,14 @@ class TagContainer:
 		# intitialize an empty object
 		self.tags = {}
 		self.tag_number = 0
+		self.fragment_length = 0
 
-	def __call__(self, bed_file):
+	def __call__(self, bed_file, is_pe):
 		# when called like a function load bed file and return self
-		self.load_bed(bed_file)
+		if not is_pe:
+			self.load_bed(bed_file)
+		else:
+			self.load_bedpe(bed_file)
 		self.sort_tags()
 		return self
 	
@@ -295,8 +310,28 @@ class TagContainer:
 			except:
 				sys.stderr.write("Input file is not in BED format!\n")
 				sys.exit(1)
-				
-			
+	
+	def load_bedpe(self, bed_file):
+		# parse a bedpe file and add unique fragments to self
+		uids = set()
+		fragment_lengths = []
+		try:
+			for i in csv.reader(open(bed_file), delimiter='\t'):
+				chrom = i[0]
+				start = int(i[1])
+				end = int(i[5])
+				uid = i[0] + i[1] + i[5]
+				if uid not in uids:
+					self.add_tag(chrom, '+', start)
+					self.add_tag(chrom, '-', end)
+					uids.add(uid)
+					if len(fragment_lengths) < 100000:
+						fragment_lengths.append(end - start)
+			self.fragment_length = sum(fragment_lengths) / len(fragment_lengths)
+		except:
+			sys.stderr.write("Input file is not in BEDPE format!\n")
+			sys.exit(1)
+		
 	def sort_tags(self):
 		# sort all tags while preserving the array
 		for chrom in self.tags.keys():
