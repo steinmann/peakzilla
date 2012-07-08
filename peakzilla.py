@@ -39,9 +39,9 @@ def main():
 	type = "float", dest="enrichment_cutoff", default='2',\
 	help = "minimum cutoff for score fold enrichment: default = 2")
 	
-	parser.add_option("-q", "--quiet",\
-	action = "store_false", dest="verbose", default=True,\
-	help = "don't print status messages")
+	parser.add_option("-v", "--verbose",\
+	action = "store_true", dest="verbose", default=False,\
+	help = "print status messages and generate files for debugging")
 	
 	parser.add_option("-g", "--gaussian",\
 	action = "store_false", dest="gaussian", default=True,\
@@ -97,7 +97,8 @@ def main():
 	
 	# plot model using R
 	print_status('Plotting the model ...', options.verbose)
-	create_model_plot(plus_model, minus_model, ip_file)
+	if options.verbose:
+		create_model_plot(plus_model, minus_model, ip_file)
 
 	# find peaks using emirical model
 	print_status('Finding peaks with peak model ...', options.verbose)
@@ -121,11 +122,11 @@ def main():
 	else:
 		print_status('No FDR calculated as control sample is missing!', options.verbose)
 	
-	# write output as bed files
+	# write output in a bed like format
 	ip_peaks.write_to_stdout(options)
 	
 	# write peaks in input to file
-	if has_control:
+	if has_control and options.verbose:
 		print_status('Writing input peaks to %s' % control_file[:-4] + '_peaks.tsv', options.verbose)
 		control_peaks.write_artifact_peaks(control_file)
 		
@@ -251,7 +252,6 @@ def generate_ideal_model(peaksize):
 
 
 class TagContainer:
-
 	# class for loading, storing and manipulating sequence tags
 	def __init__(self):
 		# intitialize an empty object
@@ -444,16 +444,14 @@ class Peak:
 		self.signal = 0
 		self.score = 0
 		self.background = 0
-		self.median_score_ip = None
-		self.median_score_control = None
+		self.nrom_signal = 0
+		self.norm_background = 0
 		self.fold_enrichment = 0
 		self.plus_freq_dist = None
 		self.minus_freq_dist = None
 		self.fdr = 0
 		self.dist_score = None
 		self.survivals = 0
-		self.plus_reg_tags_ip = None
-		self.plus_reg_tags_control = None
 
 	def __len__(self):
 		# for truth testing and number of tags
@@ -470,7 +468,9 @@ class Peak:
 		if total_control == 0:
 			# avoid zero division if no control sample is available
 			total_control = 10**6
-		self.signal = (self.score * 10**6 / float(total_IP)) - ((self.background + 1) * 10**6 / float(total_control))
+		self.nrom_signal = self.score * 10**6 / float(total_IP)
+		self.norm_background = (self.background + 1) * 10**6 / float(total_control)
+		self.signal = (self.nrom_signal - self.norm_background)
 	
 	def determine_tag_distribution(self, filter_width):
 		# return smoothed frequency distribution position of tags
@@ -746,12 +746,12 @@ class PeakContainer:
 						start = 0
 					end = summit + self.peak_shift
 					name = chrom + '_Peak_' + str(peak_count)
-					raw_score = peak.score
-					background = peak.background
+					signal = peak.nrom_signal
+					background = peak.norm_background
 					enrichment = peak.fold_enrichment
 					dist_score = peak.dist_score
 					fdr = peak.fdr
-					output = (chrom, start, end, name, summit, score, raw_score, background, enrichment, dist_score, fdr)
+					output = (chrom, start, end, name, summit, score, signal, background, enrichment, dist_score, fdr)
 					sys.stdout.write('%s\t%d\t%d\t%s\t%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % output)
 		print_status('%d peaks detected at FDR %.1f%% and %.1f fold enrichment cutoff' % (peak_count, options.fdr, options.enrichment_cutoff), options.verbose)
 	
