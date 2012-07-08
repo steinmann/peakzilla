@@ -612,7 +612,7 @@ class PeakContainer:
 				# determine the next informative position in the genome and move there
 				if plus_tags and minus_tags:
 					distance_to_next = plus_tags[0] - self.position + 1
-				self.position += distance_to_next
+					self.position += distance_to_next
 
 	def adjust_threshold(self):
 		# allows for dynamic adjustment of peak calling threshold
