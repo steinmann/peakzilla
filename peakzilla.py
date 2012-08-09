@@ -25,31 +25,31 @@ def main():
 	
 	parser.add_option("-m", "--model_peaks",\
 	type = "int", dest="n_model_peaks", default='200',\
-	help = "number of peaks to be used for model: default = 200")
+	help = "number of most highly enriched regions used to estimate peak size: default = 200")
 	
 	parser.add_option("-i", "--min_shift",\
 	type = "int", dest="min_shift", default='1',\
-	help = "number of peaks to be used for model: default = 1")
+	help = "optional lower limit of fragment size: default = 1")
 	
 	parser.add_option("-f", "--fdr",\
 	type = "float", dest="fdr", default='100',\
-	help = "cutoff for the estimated FDR value: default = 100")
+	help = "cutoff for the estimated % FDR value: default = 100")
 	
 	parser.add_option("-c", "--enrichment_cutoff",\
 	type = "float", dest="enrichment_cutoff", default='2',\
-	help = "minimum cutoff for score fold enrichment: default = 2")
+	help = "minimum cutoff for fold enrichment: default = 2")
 	
 	parser.add_option("-v", "--verbose",\
 	action = "store_true", dest="verbose", default=False,\
 	help = "print status messages and generate files for debugging")
 	
-	parser.add_option("-g", "--gaussian",\
+	parser.add_option("-e", "--gaussian",\
 	action = "store_false", dest="gaussian", default=True,\
-	help = "use gaussian for model estimate instead of best peaks")
+	help = "use empirical model estimate instead of gaussian")
 	
 	parser.add_option("-p", "--bedpe",\
 	action = "store_true", dest="bedpe", default=False,\
-	help = "input is in BEDPE format")
+	help = "input is paired end and in BEDPE format")
 	
 	# read arguments and options
 	(options, args) = parser.parse_args()
@@ -78,10 +78,9 @@ def main():
 
 	# model peak size
 	if not options.bedpe:
-		print_status('Modeling peak size and shift ...', options.verbose)
 		peak_model = PeakShiftModel(ip_tags, options)
 		peak_size = peak_model.peak_size
-		print_status('Top %d paired peaks used to model peak size' % options.n_model_peaks, options.verbose)
+		print_status('Top %d paired peaks used to estimate peak size' % options.n_model_peaks, options.verbose)
 		print_status('Peak size is %d bp' % peak_size, options.verbose)
 	else:
 		print_status('Determine peak size from fragment size ...', options.verbose)
@@ -112,7 +111,7 @@ def main():
 		create_model_plot(plus_model, minus_model, ip_file)
 
 	# find peaks using emirical model
-	print_status('Finding peaks with peak model ...', options.verbose)
+	print_status('Finding peaks in ChIP sample ...', options.verbose)
 	ip_peaks = PeakContainer(ip_tags, control_tags, peak_size, plus_model, minus_model)
 	
 	# find peaks using emirical model in control sample
@@ -121,7 +120,7 @@ def main():
 		control_peaks = PeakContainer(control_tags, ip_tags, peak_size, plus_model, minus_model)
 	
 	# calculate distribution scores
-	print_status('Calculating tag distribution scores ...', options.verbose)
+	print_status('Calculating peak scores ...', options.verbose)
 	ip_peaks.determine_distribution_scores(plus_model, minus_model)
 	if has_control:
 		control_peaks.determine_distribution_scores(plus_model, minus_model)
@@ -768,7 +767,7 @@ class PeakContainer:
 
 	def write_to_stdout(self, options):
 		# write results to stdout
-		sys.stdout.write('Chromosome\tStart\tEnd\tName\tSummit\tScore\tRawScore\tBackground\tFoldEnrichment\tDistributionScore\tFDR\n')
+		sys.stdout.write('Chromosome\tStart\tEnd\tName\tSummit\tScore\tChIP\tControltFoldEnrichment\tDistributionScore\tFDR\n')
 		peak_count = 0
 		for chrom in sorted(self.peaks.keys()):
 			for peak in self.peaks[chrom]:
@@ -794,7 +793,7 @@ class PeakContainer:
 		# write peaks found in input to file
 		filename = control_file_name[:-4] + '_peaks.tsv'
 		f = open(filename, 'w')
-		f.write('Chromosome\tStart\tEnd\tName\tSummit\tScore\tRawScore\tBackground\tFoldEnrichment\tDistributionScore\n')
+		f.write('Chromosome\tStart\tEnd\tName\tSummit\tScore\tChIP\tControl\tFoldEnrichment\tDistributionScore\n')
 		f.close()
 		peak_count = 0
 		for chrom in sorted(self.peaks.keys()):
