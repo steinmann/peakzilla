@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
-# Copyright (c) Jonas Steinmann, 2010-2011
+# Copyright (c) Jonas Steinmann, 2010-2012
 #
 # This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License version 3 as 
+# it under the terms of the GNU General Public License version 2 as 
 # published by the Free Software Foundation.
 
 import sys
@@ -27,9 +27,9 @@ def main():
 	type = "int", dest="n_model_peaks", default='200',\
 	help = "number of most highly enriched regions used to estimate peak size: default = 200")
 	
-	parser.add_option("-i", "--min_shift",\
+	parser.add_option("-l", "--min_shift",\
 	type = "int", dest="min_shift", default='1',\
-	help = "optional lower limit of fragment size: default = 1")
+	help = "optional lower limit of fragment size to estimate: default = 1")
 	
 	parser.add_option("-f", "--fdr",\
 	type = "float", dest="fdr", default='100',\
@@ -38,6 +38,10 @@ def main():
 	parser.add_option("-c", "--enrichment_cutoff",\
 	type = "float", dest="enrichment_cutoff", default='2',\
 	help = "minimum cutoff for fold enrichment: default = 2")
+	
+	parser.add_option("-s", "--score_cutoff",\
+	type = "float", dest="score_cutoff", default='1',\
+	help = "minimum cutoff for peak score: default = 1")
 	
 	parser.add_option("-v", "--verbose",\
 	action = "store_true", dest="verbose", default=False,\
@@ -110,11 +114,11 @@ def main():
 	if options.verbose:
 		create_model_plot(plus_model, minus_model, ip_file)
 
-	# find peaks using emirical model
+	# find peaks using model
 	print_status('Finding peaks in ChIP sample ...', options.verbose)
 	ip_peaks = PeakContainer(ip_tags, control_tags, peak_size, plus_model, minus_model)
 	
-	# find peaks using emirical model in control sample
+	# find peaks using model in control sample
 	if has_control:
 		print_status('Finding peaks in control sample ...', options.verbose)
 		control_peaks = PeakContainer(control_tags, ip_tags, peak_size, plus_model, minus_model)
@@ -771,8 +775,8 @@ class PeakContainer:
 		peak_count = 0
 		for chrom in sorted(self.peaks.keys()):
 			for peak in self.peaks[chrom]:
-				if peak.fdr <= options.fdr and peak.fold_enrichment >= options.enrichment_cutoff:
-					score = peak.get_score()
+				score = peak.get_score()
+				if peak.fdr <= options.fdr and peak.fold_enrichment >= options.enrichment_cutoff and score >= options.score_cutoff:
 					peak_count += 1
 					summit = peak.position
 					start = summit - self.peak_shift
@@ -787,8 +791,11 @@ class PeakContainer:
 					fdr = peak.fdr
 					output = (chrom, start, end, name, summit, score, signal, background, enrichment, dist_score, fdr)
 					sys.stdout.write('%s\t%d\t%d\t%s\t%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % output)
-		print_status('%d peaks detected at FDR %.1f%% and %.1f fold enrichment cutoff' % (peak_count, options.fdr, options.enrichment_cutoff), options.verbose)
-	
+		print_status('%d peaks detected' % peak_count, options.verbose)
+		print_status('FDR: %.1f%%' % options.fdr, options.verbose)
+		print_status('Enrichment cutoff: %.1f' % options.enrichment_cutoff, options.verbose)
+		print_status('Score cutoff: %.1f' % options.score_cutoff, options.verbose)
+
 	def write_artifact_peaks(self, control_file_name):
 		# write peaks found in input to file
 		filename = control_file_name[:-4] + '_peaks.tsv'
