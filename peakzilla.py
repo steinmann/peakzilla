@@ -771,7 +771,7 @@ class PeakContainer:
 
 	def write_to_stdout(self, options):
 		# write results to stdout
-		sys.stdout.write('Chromosome\tStart\tEnd\tName\tSummit\tScore\tChIP\tControltFoldEnrichment\tDistributionScore\tFDR\n')
+		sys.stdout.write('Chromosome\tStart\tEnd\tName\tSummit\tScore\tChIP\tControlt\tFoldEnrichment\tDistributionScore\tFDR\n')
 		peak_count = 0
 		for chrom in sorted(self.peaks.keys()):
 			for peak in self.peaks[chrom]:
