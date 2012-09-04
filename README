@@ -1,23 +1,32 @@
 USAGE
 -----
-Usage: python peakzilla.py [OPTIONS] chip.bed control.bed > results.tsv
-
 Options:
   -h, --help            show this help message and exit
-  -s FRAGMENT_SIZE, --fragment_size=FRAGMENT_SIZE
-                        upper limit of fragment size in bp: default=200
-  -f FDR, --fdr=FDR     cutoff for the estimated FDR value: default = 1
-  -c SCORE_CUTOFF, --score_cutoff=SCORE_CUTOFF
-                        minimum cutoff for score (~ fold enrichment): default
-                        = 2
-  -q, --quiet           don't print status messages
+  -m N_MODEL_PEAKS, --model_peaks=N_MODEL_PEAKS
+                        number of most highly enriched regions used to
+                        estimate peak size: default = 200
+  -i MIN_SHIFT, --min_shift=MIN_SHIFT
+                        optional lower limit of fragment size to estimate:
+                        default = 1
+  -f FDR, --fdr=FDR     cutoff for the estimated % FDR value: default = 5
+  -c ENRICHMENT_CUTOFF, --enrichment_cutoff=ENRICHMENT_CUTOFF
+                        minimum cutoff for fold enrichment: default = 2
+  -s SCORE_CUTOFF, --score_cutoff=SCORE_CUTOFF
+                        minimum cutoff for peak score: default = 1
+  -e, --gaussian        use empirical model estimate instead of gaussian
+  -p, --bedpe           input is paired end and in BEDPE format
+  -l LOG, --log=LOG     directory/filename to store log file to: default =
+                        log.txt
+  -n NEGATIVE, --negative=NEGATIVE
+                        directory/filename to store peaks in control sample:
+                        default = negative_peaks.tsv
 
 
 DEPENDENCIES
 ------------
 * Runs on OSX and Linux based operating systems
 * Requires Python 2.5 or greater
-* For up to 5x better perormance use PyPy instead of CPython
+* For 2x better perormance use PyPy instead of CPython
 
 
 INPUT FORMAT
@@ -55,22 +64,9 @@ OPTIONS
 One of peakzilla's design goals is to learn all the necessary information
 from the data. The usage of the options should therefore not be required.
 
-FRAGMENT_SIZE
-How large or small the fragment size will be modeled is loosely constrained
-by this parameter. As most protocols for ChIP sequencing involve selecting
-fragments of around 200 bp it is set to 200.
-
-FDR
-Cutoff for accepted false discovery rate, as estimated from the control
-sample.
-
-SCORE_CUTOFF
-Minnimum fold enrichment over background required for the peak to be
-printed to output.
-
-
 OUTPUT FORMAT
 -------------
 * Results are printed as a table of tab delimited values to stdout
-* Status messages are printed to stderr
+* Logs are appended to logs.txt in the current directory or a custom directory/filename specified by the -l option
+* Enriched regions in the control sample are written to negative_peaks.tsv or a custom directory/filename specified by the -n option
 

@@ -27,13 +27,13 @@ def main():
 	type = "int", dest="n_model_peaks", default='200',\
 	help = "number of most highly enriched regions used to estimate peak size: default = 200")
 	
-	parser.add_option("-l", "--min_shift",\
+	parser.add_option("-i", "--min_shift",\
 	type = "int", dest="min_shift", default='1',\
 	help = "optional lower limit of fragment size to estimate: default = 1")
 	
 	parser.add_option("-f", "--fdr",\
-	type = "float", dest="fdr", default='100',\
-	help = "cutoff for the estimated % FDR value: default = 100")
+	type = "float", dest="fdr", default='5',\
+	help = "cutoff for the estimated % FDR value: default = 5")
 	
 	parser.add_option("-c", "--enrichment_cutoff",\
 	type = "float", dest="enrichment_cutoff", default='2',\
@@ -43,10 +43,6 @@ def main():
 	type = "float", dest="score_cutoff", default='1',\
 	help = "minimum cutoff for peak score: default = 1")
 	
-	parser.add_option("-v", "--verbose",\
-	action = "store_true", dest="verbose", default=False,\
-	help = "print status messages and generate files for debugging")
-	
 	parser.add_option("-e", "--gaussian",\
 	action = "store_false", dest="gaussian", default=True,\
 	help = "use empirical model estimate instead of gaussian")
@@ -54,6 +50,14 @@ def main():
 	parser.add_option("-p", "--bedpe",\
 	action = "store_true", dest="bedpe", default=False,\
 	help = "input is paired end and in BEDPE format")
+	
+	parser.add_option("-l", "--log",\
+	type = "str", dest="log", default='log.txt',\
+	help = "directory/filename to store log file to: default = log.txt")
+	
+	parser.add_option("-n", "--negative",\
+	type = "str", dest="negative", default='negative_peaks.tsv',\
+	help = "directory/filename to store peaks in control sample: default = negative_peaks.tsv")
 	
 	# read arguments and options
 	(options, args) = parser.parse_args()
@@ -68,7 +72,7 @@ def main():
 		has_control = True
 	
 	# load tags
-	print_status('Loading tags ...', options.verbose)
+	write_log('Loading tags ...', options.log)
 	ip_tags = TagContainer()
 	ip_tags(ip_file, options.bedpe)
 	control_tags = TagContainer()
@@ -76,109 +80,77 @@ def main():
 		control_tags(control_file, options.bedpe)
 	
 	# report tag number
-	print_status('Tags in IP: %d' % ip_tags.tag_number, options.verbose)
+	write_log('Tags in IP: %d' % ip_tags.tag_number, options.log)
 	if has_control:
-		print_status('Tags in control: %d' % control_tags.tag_number, options.verbose)
+		write_log('Tags in control: %d' % control_tags.tag_number, options.log)
 
 	# model peak size
 	if not options.bedpe:
 		peak_model = PeakShiftModel(ip_tags, options)
 		peak_size = peak_model.peak_size
-		print_status('Top %d paired peaks used to estimate peak size' % options.n_model_peaks, options.verbose)
-		print_status('Peak size is %d bp' % peak_size, options.verbose)
+		write_log('Top %d paired peaks used to estimate peak size' % options.n_model_peaks, options.log)
+		write_log('Peak size is %d bp' % peak_size, options.log)
 	else:
-		print_status('Determine peak size from fragment size ...', options.verbose)
+		write_log('Determine peak size from fragment size ...', options.log)
 		peak_size =  2 * ip_tags.fragment_length + 1
-		print_status('Peak size is %d bp' % peak_size, options.verbose)
+		write_log('Peak size is %d bp' % peak_size, options.log)
 		
-	
 	# depending on option setting determine model using gaussian or empirically
 	if options.gaussian:
 		# estimate tag distirbution using gaussian function
-		print_status('Estimating tag distribution using gaussian ...', options.verbose)
+		write_log('Estimating tag distribution using gaussian ...', options.log)
 		model = generate_ideal_model(peak_size)
 		plus_model = model[0]
 		minus_model = model[1]
 	else:
 		# find peaks for modeling
-		print_status('Finding peaks for modeling ...', options.verbose)
+		write_log('Finding peaks for modeling ...', options.log)
 		ip_peaks = PeakContainer(ip_tags, control_tags, peak_size, peak_model.plus_model, peak_model.minus_model)
 		
 		# model tag distribution 
-		print_status('Modeling tag distribution ...', options.verbose)
+		write_log('Modeling tag distribution ...', options.log)
 		plus_model = ip_peaks.model_tag_distribution()[0]
 		minus_model = ip_peaks.model_tag_distribution()[1]
-	
-	# plot model using R
-	print_status('Plotting the model ...', options.verbose)
-	if options.verbose:
-		create_model_plot(plus_model, minus_model, ip_file)
 
 	# find peaks using model
-	print_status('Finding peaks in ChIP sample ...', options.verbose)
+	write_log('Finding peaks in ChIP sample ...', options.log)
 	ip_peaks = PeakContainer(ip_tags, control_tags, peak_size, plus_model, minus_model)
 	
 	# find peaks using model in control sample
 	if has_control:
-		print_status('Finding peaks in control sample ...', options.verbose)
+		write_log('Finding peaks in control sample ...', options.log)
 		control_peaks = PeakContainer(control_tags, ip_tags, peak_size, plus_model, minus_model)
 	
 	# calculate distribution scores
-	print_status('Calculating peak scores ...', options.verbose)
+	write_log('Calculating peak scores ...', options.log)
 	ip_peaks.determine_distribution_scores(plus_model, minus_model)
 	if has_control:
 		control_peaks.determine_distribution_scores(plus_model, minus_model)
 	 
 	# calculate FDR
 	if has_control:
-		print_status('Calculating FDR ...', options.verbose)
+		write_log('Calculating FDR ...', options.log)
 		ip_peaks.calculate_fdr(control_peaks.peaks)
 	else:
-		print_status('No FDR calculated as control sample is missing!', options.verbose)
+		write_log('No FDR calculated as control sample is missing!', options.log)
 	
 	# write output in a bed like format
 	ip_peaks.write_to_stdout(options)
 	
 	# write peaks in input to file
-	if has_control and options.verbose:
-		print_status('Writing input peaks to %s' % control_file[:-4] + '_peaks.tsv', options.verbose)
-		control_peaks.write_artifact_peaks(control_file)
+	if has_control:
+		write_log('Writing input peaks to %s' % options.negative, options.log)
+		control_peaks.write_artifact_peaks(options.negative)
 		
 	# let user know that run is finished
-	print_status('Done!', options.verbose)
+	write_log('Done!', options.log)
 
 
-def create_model_plot(plus_model, minus_model, ip_file_name):
-	# output model in an R friendly fashion
-		filename = ip_file_name[:-4] + '_model.R'
-		pdf_name = ip_file_name[:-4] + '_model.pdf'
-		try:
-			f = open(filename, 'w')
-			f.close()
-			f = open(filename, 'a')
-			f.write('plus = c',)
-			f.write(str(tuple(plus_model))+'\n')
-			f.write('minus = c',)
-			f.write(str(tuple(minus_model))+'\n')
-			f.write('pdf(file=\'%s\')\n' % pdf_name)
-			f.write('shift = (length(plus) - 1) / 2\n')
-			f.write('plot(seq(-shift,shift), plus,type=\'l\', col=\'red\')\n')
-			f.write('lines(seq(-shift,shift), minus, col=\'blue\')\n')
-			f.write('dev.off()')
-			f.close()
-		except:
-			print_status('WARNING: You dont have write permissions in this folder! No modeldata saved!', True)
-		try:
-			os.system('R --slave < %s > /dev/null' % filename)
-		except:
-			print_status('No plot created, need to install R for that!', True)
-
-
-def print_status(string, boolean):
-	# switchable printing to stderror
-	if boolean:
-		sys.stderr.write('%s %s\n' % (strftime("%H:%M:%S", localtime()), string))
-
+def write_log(string, filename):
+	# append string to log file of filename
+	f = open(filename, 'a')
+	f.write('%s %s\n' % (strftime("%H:%M:%S", localtime()), string))
+	f.close()
 
 def chisquare(f_obs, f_exp):
 	# calculates a one-way chi-square for observed versus exprected frequencies
@@ -188,7 +160,6 @@ def chisquare(f_obs, f_exp):
 		chisq = chisq + (f_obs[i]-f_exp[i]) ** 2 / float(f_exp[i])
 	# return chi-sqare value and associated p-value for f_obs == f_exp
 	return chisq, chisqprob(chisq, df)
-
 
 def chisqprob(chisq, df):
 	# returns chisquare probability (works only for high degrees of freedom)
@@ -212,7 +183,6 @@ def chisqprob(chisq, df):
 		z = z + 1.0
 	return (c*y)
 
-
 def median(numlist):
 	# calculate median
     s = sorted(numlist)
@@ -223,7 +193,6 @@ def median(numlist):
         return (s[l/2] + s[l/2-1]) / 2.0
     else:
         return float(s[l/2])
-
 
 def convolve(signal, filter_width):
 	# smooth signal with a flat scanning window of filter_width
@@ -791,15 +760,14 @@ class PeakContainer:
 					fdr = peak.fdr
 					output = (chrom, start, end, name, summit, score, signal, background, enrichment, dist_score, fdr)
 					sys.stdout.write('%s\t%d\t%d\t%s\t%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % output)
-		print_status('%d peaks detected' % peak_count, options.verbose)
-		print_status('FDR: %.1f%%' % options.fdr, options.verbose)
-		print_status('Enrichment cutoff: %.1f' % options.enrichment_cutoff, options.verbose)
-		print_status('Score cutoff: %.1f' % options.score_cutoff, options.verbose)
+		write_log('%d peaks detected' % peak_count, options.log)
+		write_log('FDR: %.1f%%' % options.fdr, options.log)
+		write_log('Enrichment cutoff: %.1f' % options.enrichment_cutoff, options.log)
+		write_log('Score cutoff: %.1f' % options.score_cutoff, options.log)
 
 	def write_artifact_peaks(self, control_file_name):
 		# write peaks found in input to file
-		filename = control_file_name[:-4] + '_peaks.tsv'
-		f = open(filename, 'w')
+		f = open(control_file_name, 'w')
 		f.write('Chromosome\tStart\tEnd\tName\tSummit\tScore\tChIP\tControl\tFoldEnrichment\tDistributionScore\n')
 		f.close()
 		peak_count = 0
@@ -819,7 +787,7 @@ class PeakContainer:
 					enrichment = peak.fold_enrichment
 					dist_score = peak.dist_score
 					output = (chrom, start, end, name, summit, score, raw_score, background, enrichment, dist_score)
-					f = open(filename, 'a')
+					f = open(control_file_name, 'a')
 					f.write('%s\t%d\t%d\t%s\t%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % output)
 					f.close()
 
