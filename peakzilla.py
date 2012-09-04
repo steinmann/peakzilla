@@ -32,8 +32,8 @@ def main():
 	help = "optional lower limit of fragment size to estimate: default = 1")
 	
 	parser.add_option("-f", "--fdr",\
-	type = "float", dest="fdr", default='5',\
-	help = "cutoff for the estimated % FDR value: default = 5")
+	type = "float", dest="fdr", default='100',\
+	help = "cutoff for the estimated % FDR value: default = 100")
 	
 	parser.add_option("-c", "--enrichment_cutoff",\
 	type = "float", dest="enrichment_cutoff", default='2',\
