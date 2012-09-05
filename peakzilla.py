@@ -773,7 +773,8 @@ class PeakContainer:
 		peak_count = 0
 		for chrom in sorted(self.peaks.keys()):
 			for peak in self.peaks[chrom]:
-				if peak.get_score() > 1:
+				score = peak.get_score()
+				if score > 1:
 					peak_count += 1
 					summit = peak.position
 					start = summit - self.peak_shift
@@ -781,12 +782,11 @@ class PeakContainer:
 						start = 0
 					end = summit + self.peak_shift
 					name = chrom + '_Peak_' + str(peak_count)
-					score = peak.get_score()
-					raw_score = peak.score
-					background = peak.background
+					signal = peak.nrom_signal
+					background = peak.norm_background
 					enrichment = peak.fold_enrichment
 					dist_score = peak.dist_score
-					output = (chrom, start, end, name, summit, score, raw_score, background, enrichment, dist_score)
+					output = (chrom, start, end, name, summit, score, signal, background, enrichment, dist_score)
 					f = open(control_file_name, 'a')
 					f.write('%s\t%d\t%d\t%s\t%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % output)
 					f.close()
