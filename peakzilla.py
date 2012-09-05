@@ -134,7 +134,7 @@ def main():
 	else:
 		write_log('No FDR calculated as control sample is missing!', options.log)
 	
-	# write output in a bed like format
+	# write output in a BED like format
 	ip_peaks.write_to_stdout(options)
 	
 	# write peaks in input to file
@@ -142,12 +142,12 @@ def main():
 		write_log('Writing input peaks to %s' % options.negative, options.log)
 		control_peaks.write_artifact_peaks(options.negative)
 		
-	# let user know that run is finished
+	# run finished successfully
 	write_log('Done!', options.log)
 
 
 def write_log(string, filename):
-	# append string to log file of filename
+	# append line of string to log file of filename
 	f = open(filename, 'a')
 	f.write('%s %s\n' % (strftime("%H:%M:%S", localtime()), string))
 	f.close()
@@ -284,7 +284,7 @@ class TagContainer:
 				sys.exit(1)
 	
 	def load_bedpe(self, bed_file):
-		# parse a bedpe file and add unique fragments to self
+		# parse a BEDPE file and add unique fragments to self
 		uids = set()
 		fragment_lengths = []
 		try:
@@ -297,6 +297,7 @@ class TagContainer:
 					self.add_tag(chrom, '+', start)
 					self.add_tag(chrom, '-', end)
 					uids.add(uid)
+					# use first 100000 read pairs for fragement size estimation
 					if len(fragment_lengths) < 100000:
 						fragment_lengths.append(end - start)
 			self.fragment_length = sum(fragment_lengths) / len(fragment_lengths)
@@ -305,7 +306,7 @@ class TagContainer:
 			sys.exit(1)
 		
 	def sort_tags(self):
-		# sort all tags while preserving the array
+		# sort all tags while preserving the array data structure
 		for chrom in self.tags.keys():
 			# as sorted returns conversion back to array is required
 			self.tags[chrom]['+'] = array('i', sorted(self.tags[chrom]['+']))
@@ -327,7 +328,7 @@ class TagContainer:
 		return genome_size
 			
 	def get_tags(self, chrom, strand):
-		# return the whole array of tags
+		# return all tags for chromosome
 		if chrom in self.tags:
 			return self.tags[chrom][strand]
 		else:
@@ -338,7 +339,7 @@ class TagContainer:
 		return len(self.tags[chrom][strand])
 		
 	def get_chrom_names(self):
-		# retreive a sorted list of all chromosome names
+		# retrieve a sorted list of all chromosome names
 		return self.tags.keys()
 		
 
@@ -733,7 +734,7 @@ class PeakContainer:
 				control_count +=1
 			ip_fdr = control_count / (control_count + ip_count) * 100
 			score2fdr[str(ip_score)] = ip_fdr
-		# add fdr to each peak object
+		# add FDR to each peak object
 		for chrom in self.peaks.keys():
 			for peak in self.peaks[chrom]:
 				peak.fdr = score2fdr[str(peak.get_score())]
