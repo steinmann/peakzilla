@@ -121,12 +121,14 @@ def main():
 		write_log('Finding peaks in control sample ...', options.log)
 		control_peaks = PeakContainer(control_tags, ip_tags, peak_size, plus_model, minus_model)
 	
-	# calculate distribution scores
+	# calculate distribution scores and peak rank
 	write_log('Calculating peak scores ...', options.log)
 	ip_peaks.determine_distribution_scores(plus_model, minus_model)
+	ip_peaks.determine_peak_ranks()
 	if has_control:
 		control_peaks.determine_distribution_scores(plus_model, minus_model)
-	 
+		control_peaks.determine_peak_ranks()
+
 	# calculate FDR
 	if has_control:
 		write_log('Calculating FDR ...', options.log)
@@ -529,6 +531,7 @@ class PeakContainer:
 		self.plus_window = deque([])
 		self.minus_window = deque([])
 		self.position = 0
+		self.peak2rank = {}
 		self.build()
 
 	def build(self):
@@ -709,6 +712,16 @@ class PeakContainer:
 		for chrom in self.peaks.keys():
 			for peak in self.peaks[chrom]:
 				peak.calc_distribution_score(plus_model, minus_model)
+	
+	def determine_peak_ranks(self):
+		# assign a unique rank to every peak
+		all_peaks = []
+		for chrom in self.peaks.keys():
+			for peak in self.peaks[chrom]:
+				all_peaks.append((peak.get_score(), peak.position))
+		all_peaks = sorted(all_peaks, reverse=True)
+		for i in range(len(all_peaks)):
+			self.peak2rank[all_peaks[i]] = str(i + 1)
 
 	def calculate_fdr(self, control_peaks):
 		# create a dictionary to correlate scores with FDR values
@@ -753,7 +766,7 @@ class PeakContainer:
 					if start < 0:
 						start = 0
 					end = summit + self.peak_shift
-					name = chrom + '_Peak_' + str(peak_count)
+					name = 'Peak_' + self.peak2rank[(score, summit)]
 					signal = peak.nrom_signal
 					background = peak.norm_background
 					enrichment = peak.fold_enrichment
@@ -782,7 +795,7 @@ class PeakContainer:
 					if start < 0:
 						start = 0
 					end = summit + self.peak_shift
-					name = chrom + '_Peak_' + str(peak_count)
+					name = name = 'Peak_' + self.peak2rank[(score, summit)]
 					signal = peak.nrom_signal
 					background = peak.norm_background
 					enrichment = peak.fold_enrichment
