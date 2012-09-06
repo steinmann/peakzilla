@@ -1,5 +1,7 @@
 USAGE
 -----
+Usage: python peakzilla.py [OPTIONS] chip.bed control.bed > results.tsv
+
 Options:
   -h, --help            show this help message and exit
   -m N_MODEL_PEAKS, --model_peaks=N_MODEL_PEAKS
@@ -8,7 +10,7 @@ Options:
   -i MIN_SHIFT, --min_shift=MIN_SHIFT
                         optional lower limit of fragment size to estimate:
                         default = 1
-  -f FDR, --fdr=FDR     cutoff for the estimated % FDR value: default = 5
+  -f FDR, --fdr=FDR     cutoff for the estimated % FDR value: default = 100
   -c ENRICHMENT_CUTOFF, --enrichment_cutoff=ENRICHMENT_CUTOFF
                         minimum cutoff for fold enrichment: default = 2
   -s SCORE_CUTOFF, --score_cutoff=SCORE_CUTOFF
@@ -19,8 +21,6 @@ Options:
                         log.txt
   -n NEGATIVE, --negative=NEGATIVE
                         directory/filename to store peaks in control sample:
-                        default = negative_peaks.tsv
-
 
 DEPENDENCIES
 ------------
