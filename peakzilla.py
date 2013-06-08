@@ -34,10 +34,6 @@ def main():
 	type = "int", dest="min_shift", default='1',\
 	help = "optional lower limit of fragment size to estimate: default = 1")
 	
-	parser.add_option("-f", "--fdr",\
-	type = "float", dest="fdr", default='100',\
-	help = "cutoff for the estimated % FDR value: default = 100")
-	
 	parser.add_option("-c", "--enrichment_cutoff",\
 	type = "float", dest="enrichment_cutoff", default='2',\
 	help = "minimum cutoff for fold enrichment: default = 2")
@@ -762,7 +758,7 @@ class PeakContainer:
 		for chrom in sorted(self.peaks.keys()):
 			for peak in self.peaks[chrom]:
 				score = peak.get_score()
-				if peak.fdr <= options.fdr and peak.fold_enrichment >= options.enrichment_cutoff and score >= options.score_cutoff:
+				if peak.fold_enrichment >= options.enrichment_cutoff and score >= options.score_cutoff:
 					peak_count += 1
 					summit = peak.position
 					start = summit - self.peak_shift
@@ -778,7 +774,6 @@ class PeakContainer:
 					output = (chrom, start, end, name, summit, score, signal, background, enrichment, dist_score, fdr)
 					sys.stdout.write('%s\t%d\t%d\t%s\t%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n' % output)
 		write_log('%d peaks detected' % peak_count, options.log)
-		write_log('FDR: %.1f%%' % options.fdr, options.log)
 		write_log('Enrichment cutoff: %.1f' % options.enrichment_cutoff, options.log)
 		write_log('Score cutoff: %.1f' % options.score_cutoff, options.log)
 
