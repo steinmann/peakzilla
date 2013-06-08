@@ -29,11 +29,7 @@ def main():
 	parser.add_option("-m", "--model_peaks",\
 	type = "int", dest="n_model_peaks", default='200',\
 	help = "number of most highly enriched regions used to estimate peak size: default = 200")
-	
-	parser.add_option("-i", "--min_shift",\
-	type = "int", dest="min_shift", default='1',\
-	help = "optional lower limit of fragment size to estimate: default = 1")
-	
+
 	parser.add_option("-c", "--enrichment_cutoff",\
 	type = "float", dest="enrichment_cutoff", default='2',\
 	help = "minimum cutoff for fold enrichment: default = 2")
@@ -360,7 +356,6 @@ class PeakShiftModel:
 		self.peaks_found = 0
 		self.peaks = {}
 		self.n_model_peaks = options.n_model_peaks
-		self.min_shift = options.min_shift
 		self.build()
 
 	def build(self):
@@ -412,9 +407,13 @@ class PeakShiftModel:
 			self.peaks[chrom]['+'] = []
 			self.peaks[chrom]['-'] = []
 		for tag in tags:
-			# add a new tag to the window and reposition it
-			window.append(tag)
-			window_start = tag - self.window_size
+			# if we already have same tag in window dont add
+			if window and window[-1] == tag:
+				pass
+			# else add the new tag to window and reposition it
+			else:
+				window.append(tag)
+				window_start = tag - self.window_size
 			# get rid of all the tags not fitting in the window
 			while window[0] < window_start:
 				window.popleft()
@@ -436,7 +435,7 @@ class PeakShiftModel:
 				minus_peak = minus_peaks[0]
 				if minus_peak[1] > plus_peak[1]:
 					peak_shift = minus_peak[1] - plus_peak[1]
-					if peak_shift < 500 and peak_shift > self.min_shift:
+					if peak_shift < 500:
 						self.peak_shifts.append((min(minus_peak[0], plus_peak[0]), peak_shift))
 						self.peaks_incorporated += 1
 					break
