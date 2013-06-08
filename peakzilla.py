@@ -51,8 +51,8 @@ def main():
 	help = "directory/filename to store log file to: default = log.txt")
 	
 	parser.add_option("-n", "--negative",\
-	type = "str", dest="negative", default='negative_peaks.tsv',\
-	help = "directory/filename to store peaks in control sample: default = negative_peaks.tsv")
+	action = "store_true", dest="negative", default=False,\
+	help = "write negative peaks to negative_peaks.tsv")
 	
 	# read arguments and options
 	(options, args) = parser.parse_args()
@@ -135,9 +135,9 @@ def main():
 	ip_peaks.write_to_stdout(options)
 	
 	# write peaks in input to file
-	if has_control:
-		write_log('Writing input peaks to %s' % options.negative, options.log)
-		control_peaks.write_artifact_peaks(options.negative)
+	if options.negative:
+		write_log('Writing input peaks to negative_peaks.tsv', options.log)
+		control_peaks.write_artifact_peaks('negative_peaks.tsv')
 		
 	# run finished successfully
 	write_log('Done!', options.log)

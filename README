@@ -1,16 +1,15 @@
+PEAKZILLA
+---------
+Peakzilla identifies sites of enrichment and transcription factor binding sites from transcription factor ChIP-seq and ChIP-exo experiments at hight accuracy and resolution. It is designed to perform equally well for data from any species. All necessary parameters are estimated from the data. Peakzilla is suitable for both single and paired end data from any sequencing platform.
+
+
 USAGE
 -----
-Usage: python peakzilla.py [OPTIONS] chip.bed control.bed > results.tsv
-
 Options:
   -h, --help            show this help message and exit
   -m N_MODEL_PEAKS, --model_peaks=N_MODEL_PEAKS
                         number of most highly enriched regions used to
                         estimate peak size: default = 200
-  -i MIN_SHIFT, --min_shift=MIN_SHIFT
-                        optional lower limit of fragment size to estimate:
-                        default = 1
-  -f FDR, --fdr=FDR     cutoff for the estimated % FDR value: default = 100
   -c ENRICHMENT_CUTOFF, --enrichment_cutoff=ENRICHMENT_CUTOFF
                         minimum cutoff for fold enrichment: default = 2
   -s SCORE_CUTOFF, --score_cutoff=SCORE_CUTOFF
@@ -19,8 +18,8 @@ Options:
   -p, --bedpe           input is paired end and in BEDPE format
   -l LOG, --log=LOG     directory/filename to store log file to: default =
                         log.txt
-  -n NEGATIVE, --negative=NEGATIVE
-                        directory/filename to store peaks in control sample:
+  -n, --negative        write negative peaks to negative_peaks.tsv
+
 
 DEPENDENCIES
 ------------
