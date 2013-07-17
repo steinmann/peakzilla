@@ -2,6 +2,7 @@ PEAKZILLA
 ---------
 Peakzilla identifies sites of enrichment and transcription factor binding sites from transcription factor ChIP-seq and ChIP-exo experiments at hight accuracy and resolution. It is designed to perform equally well for data from any species. All necessary parameters are estimated from the data. Peakzilla is suitable for both single and paired end data from any sequencing platform.
 
+Note that peakzilla is not suited for the identification of broad regions of enrichment (e.g. ChIP-seq for histone marks), we recommand using MACS instead: Zhang et al. Model-based Analysis of ChIP-Seq (MACS). Genome Biol (2008) 9(9):R137
 
 USAGE
 -----
@@ -55,8 +56,17 @@ bamToBed -i input.bam > input.bed
 bamToBed -i chip.bam > chip.bed
 
 # run peakzilla
-python peakzilla.py chip.bed input.bed > chip_results.tsv
+python peakzilla.py chip.bed input.bed > chip_peaks.tsv
 
+# Comparison of 2 datasets
+#    Determine significant peaks with a score threshold of 10
+python peakzilla.py -s 10 chip1.bed input1.bed > chip1_s10_peaks.tsv
+#    Determine enriched regions with a score threshold of 2
+python peakzilla.py -s 2 chip2.bed input2.bed > chip2_s2_peaks.tsv
+#    Overlap significant peaks from chip1 with enriched regions from chip2
+intersectBed -a chip1_s10_peaks.tsv -b chip2_s2_peaks.tsv > intersect_peaks.tsv
+
+For example datasets as well as an example of a computational pipeline for the comparative analysis of ChIP-seq datasets, please refer to our publication: Bardet AF et al. A computational pipeline for comparative ChIP-seq analyses. Nature Protocols (2011) 7(1):45-61 (http://www.starklab.org/data/bardet_natprotoc_2011/)
 
 OPTIONS
 -------
