@@ -38,6 +38,10 @@ def main():
 	type = "float", dest="score_cutoff", default='1',\
 	help = "minimum cutoff for peak score: default = 1")
 	
+	parser.add_option("-f", "--fragment_size",\
+	type = "int", dest="fragment_size", default='0',\
+	help = "manually set fragment size in bp: default = estimate from data")
+	
 	parser.add_option("-e", "--gaussian",\
 	action = "store_false", dest="gaussian", default=True,\
 	help = "use empirical model estimate instead of gaussian")
@@ -80,14 +84,19 @@ def main():
 		write_log('Tags in control: %d' % control_tags.tag_number, options.log)
 
 	# model peak size
-	if not options.bedpe:
-		peak_model = PeakShiftModel(ip_tags, options)
-		peak_size = peak_model.peak_size
-		write_log('Top %d paired peaks used to estimate peak size' % options.n_model_peaks, options.log)
-		write_log('Peak size is %d bp' % peak_size, options.log)
+	if not options.fragment_size:
+		if not options.bedpe:
+			peak_model = PeakShiftModel(ip_tags, options)
+			peak_size = peak_model.peak_size
+			write_log('Top %d paired peaks used to estimate peak size' % options.n_model_peaks, options.log)
+			write_log('Peak size is %d bp' % peak_size, options.log)
+		else:
+			write_log('Determine peak size from fragment size ...', options.log)
+			peak_size =  2 * ip_tags.fragment_length + 1
+			write_log('Peak size is %d bp' % peak_size, options.log)
 	else:
-		write_log('Determine peak size from fragment size ...', options.log)
-		peak_size =  2 * ip_tags.fragment_length + 1
+		peak_size =  2 * options.fragment_size + 1
+		write_log('Fragment size was set manually to %d bp' % options.fragment_size, options.log)
 		write_log('Peak size is %d bp' % peak_size, options.log)
 		
 	# depending on option setting determine model using gaussian or empirically
