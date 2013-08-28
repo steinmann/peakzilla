@@ -88,7 +88,7 @@ def main():
 		if not options.bedpe:
 			peak_model = PeakShiftModel(ip_tags, options)
 			peak_size = peak_model.peak_size
-			write_log('Top %d paired peaks used to estimate peak size' % options.n_model_peaks, options.log)
+			write_log('Top %d paired peaks used to estimate peak size' % peak_model.peaks_for_size, options.log)
 			write_log('Peak size is %d bp' % peak_size, options.log)
 		else:
 			write_log('Determine peak size from fragment size ...', options.log)
@@ -363,6 +363,7 @@ class PeakShiftModel:
 		self.minus_model = None
 		self.peaks_incorporated = 0
 		self.peaks_found = 0
+		self.peaks_for_size = 0
 		self.peaks = {}
 		self.n_model_peaks = options.n_model_peaks
 		self.build()
@@ -377,7 +378,14 @@ class PeakShiftModel:
 		# calculate the median peak_shift of top peaks
 		self.peak_shifts = sorted(self.peak_shifts, reverse=True)
 		top_shifts = []
-		for i in range(self.n_model_peaks):
+		# check whether enough paired peaks have been found, if not reduce peaks for model 
+		if self.peaks_incorporated < self.n_model_peaks:
+			n_top_peaks = self.peaks_incorporated
+		else:
+			n_top_peaks = self.n_model_peaks
+		self.peaks_for_size = n_top_peaks
+		# ceate list of top peaks
+		for i in range(n_top_peaks):
 			top_shifts.append(self.peak_shifts[i][1])
 		self.peak_shift = int(median(top_shifts))
 		# peak size is 2 * shift size + 1
