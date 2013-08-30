@@ -392,26 +392,6 @@ class PeakShiftModel:
 		self.peak_size = self.peak_shift * 2 + 1
 		self.plus_model = [1] * self.peak_shift  + [0] * (self.peak_shift + 1)
 		self.minus_model = [0] * (self.peak_shift + 1) + [1] * self.peak_shift
-	
-	def adjust_threshold(self):
-		# allows for dynamic adjustment of peak calling threshold
-		peak_scores = []
-		for chrom in self.peaks:
-			for peak in self.peaks[chrom]['+']:
-				peak_scores.append(peak[0])
-			for peak in self.peaks[chrom]['-']:
-				peak_scores.append(peak[0])	
-		# threshold to get sufficiently large number of candidates
-		self.tag_threshold = sorted(peak_scores)[-self.n_model_peaks * 8]
-		# remove peaks below threshold
-		for chrom in self.peaks.keys():
-			self.peaks[chrom]['+'] = [peak for peak in self.peaks[chrom]['+'] if peak[0] >= self.tag_threshold]
-			self.peaks[chrom]['-'] = [peak for peak in self.peaks[chrom]['-'] if peak[0] >= self.tag_threshold]
-		# recount peaks
-		self.peak_count = 0
-		for chrom in self.peaks:
-			self.peak_count += len(self.peaks[chrom]['+'])
-			self.peak_count += len(self.peaks[chrom]['-'])
 
 	def find_simple_peaks(self, chrom, strand):
 		# return maxima of tag counts in regions with more tags than threshold
