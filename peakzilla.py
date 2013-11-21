@@ -749,7 +749,7 @@ class PeakContainer:
 
 	def write_to_stdout(self, options):
 		# write results to stdout
-		sys.stdout.write('Chromosome\tStart\tEnd\tName\tSummit\tScore\tChIP\tControl\tFoldEnrichment\tDistributionScore\tFDR\n')
+		sys.stdout.write('#Chromosome\tStart\tEnd\tName\tSummit\tScore\tChIP\tControl\tFoldEnrichment\tDistributionScore\tFDR\n')
 		peak_count = 0
 		for chrom in sorted(self.peaks.keys()):
 			for peak in self.peaks[chrom]:
@@ -776,7 +776,7 @@ class PeakContainer:
 	def write_artifact_peaks(self, control_file_name):
 		# write peaks found in input to file
 		f = open(control_file_name, 'w')
-		f.write('Chromosome\tStart\tEnd\tName\tSummit\tScore\tChIP\tControl\tFoldEnrichment\tDistributionScore\n')
+		f.write('#Chromosome\tStart\tEnd\tName\tSummit\tScore\tChIP\tControl\tFoldEnrichment\tDistributionScore\n')
 		f.close()
 		peak_count = 0
 		for chrom in sorted(self.peaks.keys()):
