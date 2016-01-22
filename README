@@ -78,4 +78,4 @@ OUTPUT FORMAT
 * Results are printed as a table of tab delimited values to stdout
 * Logs are appended to logs.txt in the current directory or a custom directory/filename specified by the -l option
 * Enriched regions in the control sample are written to negative_peaks.tsv or a custom directory/filename specified by the -n option
-
+* Columns represent Chromosome / Start / End / Name / Summit / Score / ChIP / Control / FoldEnrichment / DistributionScore / FDR (%)
