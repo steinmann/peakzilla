@@ -194,7 +194,7 @@ def median(numlist):
     s = sorted(numlist)
     l = len(numlist)
     if l == 0:
-		return float('nan')
+        return float('nan')
     if l%2 == 0:
         return (s[l/2] + s[l/2-1]) / 2.0
     else:
