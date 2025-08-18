@@ -25,7 +25,7 @@ Options:
 DEPENDENCIES
 ------------
 * Runs on OSX and Linux based operating systems
-* Requires Python 2.5 or greater
+* Requires Python 2.7
 * For 2x better perormance use PyPy instead of CPython
 
 
