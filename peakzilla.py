@@ -297,8 +297,8 @@ class TagContainer:
 			for i in csv.reader(open(bed_file), delimiter='\t'):
 				chrom = i[0]
 				start = int(i[1])
-				end = int(i[5])
-				uid = i[0] + i[1] + i[5]
+				end = int(i[2])
+				uid = i[0] + i[1] + i[2]
 				if uid not in uids:
 					self.add_tag(chrom, '+', start)
 					self.add_tag(chrom, '-', end)
